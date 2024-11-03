@@ -16,27 +16,22 @@ func main() {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
-	// Connect to the database
+	// Get the DB
 	dbConn, err := db.Connect(dstreamConfig.DBConnectionString)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer dbConn.Close()
 
-	// Initialize SQLServerMonitor
+	// Create a Database Monitor
 	monitor := cdc.NewSQLServerMonitor(dbConn)
 
-	// Initialize the checkpoint table
-	// err = cdc.InitializeCheckpointTable(dbConn)
-	// if err != nil {
-	// 	log.Fatalf("Error initializing checkpoint table: %v", err)
-	// }
+	// Initialize the checkpoints for  monitor
 	monitor.InitializeCheckpointTable(dbConn)
 	if err != nil {
 		log.Fatalf("Error initializing checkpoint table: %v", err)
 	}
-
-	//cdc.StartMonitoring(dbConn, *dstreamConfig)
+	// Start Monitoring
 	monitor.StartMonitoring(dbConn, *dstreamConfig)
 	if err != nil {
 		log.Fatalf("Error initializing checkpoint table: %v", err)

@@ -115,7 +115,7 @@ func (monitor *SQLServerMonitor) MonitorTable(tableConfig config.TableConfig) er
 // initializeLSN loads the initial LSN for a table from the database into memory
 func (monitor *SQLServerMonitor) initializeLSN(tableName string) error {
 	defaultStartLSN := "00000000000000000000"
-	initialLSN, err := loadLastLSN(monitor.dbConn, tableName, defaultStartLSN)
+	initialLSN, err := monitor.loadLastLSN(monitor.dbConn, tableName, defaultStartLSN)
 	if err != nil {
 		log.Printf("Failed to load initial LSN for %s: %v", tableName, err)
 		return err
@@ -157,15 +157,15 @@ func (monitor *SQLServerMonitor) getCurrentLSN(tableName string) []byte {
 }
 
 // updatePollingIntervalAndLSN adjusts the polling interval and updates the last LSN
-func (monitor *SQLServerMonitor) updatePollingIntervalAndLSN(tableName string, newLSN []byte, changesFound bool, pollInterval time.Duration, tableConfig config.TableConfig) (time.Duration, error) {
+func (m *SQLServerMonitor) updatePollingIntervalAndLSN(tableName string, newLSN []byte, changesFound bool, pollInterval time.Duration, tableConfig config.TableConfig) (time.Duration, error) {
 	if changesFound {
 		// Update the in-memory last LSN for this table
-		monitor.lsnMutex.Lock()
-		monitor.lastLSNs[tableName] = newLSN
-		monitor.lsnMutex.Unlock()
+		m.lsnMutex.Lock()
+		m.lastLSNs[tableName] = newLSN
+		m.lsnMutex.Unlock()
 
 		// Persist the new LSN to the database
-		err := saveLastLSN(monitor.dbConn, tableName, newLSN)
+		err := m.saveLastLSN(m.dbConn, tableName, newLSN)
 		if err != nil {
 			return pollInterval, fmt.Errorf("error saving last LSN for %s: %v", tableName, err)
 		}
@@ -189,7 +189,7 @@ func (m *SQLServerMonitor) fetchCDCChanges(db *sql.DB, tableName string, columns
 	changesFound := false
 	var latestLSN []byte
 
-	lastLSN, err := loadLastLSN(db, tableName, defaultStartLSN)
+	lastLSN, err := m.loadLastLSN(db, tableName, defaultStartLSN)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to load last LSN for %s: %w", tableName, err)
 	}
@@ -249,7 +249,7 @@ func (monitor *SQLServerMonitor) getCDCEntries(db *sql.DB, tableName string, col
 }
 
 // scanRowData scans a single row from the CDC result set into variables
-func (monitor *SQLServerMonitor) scanRowData(rows *sql.Rows, columns []string) ([]byte, int, map[string]interface{}, error) {
+func (m *SQLServerMonitor) scanRowData(rows *sql.Rows, columns []string) ([]byte, int, map[string]interface{}, error) {
 	var lsn []byte
 	var operation int
 
@@ -304,4 +304,57 @@ func (m *SQLServerMonitor) genJsonForEvent(tableName string, operation int, data
 	}
 
 	return string(jsonData), nil
+}
+
+// Load the last LSN from the database for a specific table
+func (m *SQLServerMonitor) loadLastLSN(db *sql.DB, tableName, defaultStartLSN string) ([]byte, error) {
+	var lastLSN []byte
+	query := "SELECT last_lsn FROM cdc_offsets WHERE table_name = @tableName"
+	err := db.QueryRow(query, sql.Named("tableName", tableName)).Scan(&lastLSN)
+	if err == sql.ErrNoRows {
+		// If no checkpoint exists, initialize with a default LSN
+		startLSNBytes, _ := hex.DecodeString(defaultStartLSN)
+		lastLSN = startLSNBytes
+		log.Printf("No previous LSN for %s. Initializing with default start LSN.", tableName)
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to load LSN for %s: %w", tableName, err)
+	} else {
+		log.Printf("Resuming %s from last LSN: %s", tableName, hex.EncodeToString(lastLSN))
+	}
+	return lastLSN, nil
+}
+
+// Save the last processed LSN for a specific table to the database if it has changed
+func (m *SQLServerMonitor) saveLastLSN(db *sql.DB, tableName string, newLSN []byte) error {
+	// Check if the last LSN in the database matches the new LSN
+	var currentLSN []byte
+	query := "SELECT last_lsn FROM cdc_offsets WHERE table_name = @tableName"
+	err := db.QueryRow(query, sql.Named("tableName", tableName)).Scan(&currentLSN)
+
+	if err == nil && string(currentLSN) == string(newLSN) {
+		// If the current LSN matches the new LSN, skip updating
+		log.Printf("No change in LSN for %s; skipping save.", tableName)
+		return nil
+	} else if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("failed to check current LSN for %s: %w", tableName, err)
+	}
+
+	// SQL Server-compatible upsert using MERGE
+	upsertQuery := `
+	MERGE INTO cdc_offsets AS target
+	USING (VALUES (@tableName, @lastLSN, GETDATE())) AS source (table_name, last_lsn, updated_at)
+	ON target.table_name = source.table_name
+	WHEN MATCHED THEN 
+		UPDATE SET last_lsn = source.last_lsn, updated_at = source.updated_at
+	WHEN NOT MATCHED THEN
+		INSERT (table_name, last_lsn, updated_at) 
+		VALUES (source.table_name, source.last_lsn, source.updated_at);`
+
+	_, err = db.Exec(upsertQuery, sql.Named("tableName", tableName), sql.Named("lastLSN", newLSN))
+	if err != nil {
+		return fmt.Errorf("failed to save LSN for %s: %w", tableName, err)
+	}
+
+	log.Printf("Saved new LSN for %s: %s", tableName, hex.EncodeToString(newLSN))
+	return nil
 }
