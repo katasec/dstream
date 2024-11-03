@@ -11,13 +11,13 @@ import (
 func main() {
 
 	// Load the configuration from the HCL file
-	cfg, err := config.LoadConfig("dstream.hcl")
+	dstreamConfig, err := config.LoadConfig("dstream.hcl")
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
 	// Connect to the database
-	dbConn, err := db.Connect(cfg.DBConnectionString)
+	dbConn, err := db.Connect(dstreamConfig.DBConnectionString)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -29,7 +29,7 @@ func main() {
 		log.Fatalf("Error initializing checkpoint table: %v", err)
 	}
 
-	cdc.StartMonitoring(dbConn, *cfg)
+	cdc.StartMonitoring(dbConn, *dstreamConfig)
 
 	// Keep the application running
 	select {}
