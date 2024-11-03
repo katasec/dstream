@@ -23,13 +23,24 @@ func main() {
 	}
 	defer dbConn.Close()
 
+	// Initialize SQLServerMonitor
+	monitor := cdc.NewSQLServerMonitor(dbConn)
+
 	// Initialize the checkpoint table
-	err = cdc.InitializeCheckpointTable(dbConn)
+	// err = cdc.InitializeCheckpointTable(dbConn)
+	// if err != nil {
+	// 	log.Fatalf("Error initializing checkpoint table: %v", err)
+	// }
+	monitor.InitializeCheckpointTable(dbConn)
 	if err != nil {
 		log.Fatalf("Error initializing checkpoint table: %v", err)
 	}
 
-	cdc.StartMonitoring(dbConn, *dstreamConfig)
+	//cdc.StartMonitoring(dbConn, *dstreamConfig)
+	monitor.StartMonitoring(dbConn, *dstreamConfig)
+	if err != nil {
+		log.Fatalf("Error initializing checkpoint table: %v", err)
+	}
 
 	// Keep the application running
 	select {}

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,40 @@ func NewSQLServerMonitor(dbConn *sql.DB) *SQLServerMonitor {
 	return &SQLServerMonitor{
 		dbConn:   dbConn,
 		lastLSNs: make(map[string][]byte),
+	}
+}
+
+// InitializeCheckpointTable checks for the existence of the cdc_offsets table and creates it if it doesn't exist
+func (monitor *SQLServerMonitor) InitializeCheckpointTable(db *sql.DB) error {
+	query := `
+	IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'cdc_offsets')
+	BEGIN
+		CREATE TABLE cdc_offsets (
+			table_name NVARCHAR(255) PRIMARY KEY,
+			last_lsn VARBINARY(10),
+			updated_at DATETIME DEFAULT GETDATE()
+		);
+	END`
+
+	_, err := db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("failed to create cdc_offsets table: %w", err)
+	}
+
+	log.Println("cdc_offsets table is ready (created if it didn't exist).")
+	return nil
+}
+
+// StartMonitoring launches monitoring for each configured table based on the SQLServerMonitor struct
+func (monitor *SQLServerMonitor) StartMonitoring(dbConn *sql.DB, cfg config.Config) {
+	sqlMonitor := NewSQLServerMonitor(dbConn)
+	for _, tableConfig := range cfg.Tables {
+		go func(tableConfig config.TableConfig) {
+			err := sqlMonitor.MonitorTable(tableConfig)
+			if err != nil {
+				log.Printf("Monitoring stopped for table %s due to error: %v", tableConfig.Name, err)
+			}
+		}(tableConfig)
 	}
 }
 
@@ -56,7 +91,7 @@ func (monitor *SQLServerMonitor) MonitorTable(tableConfig config.TableConfig) er
 		currentLSN := monitor.getCurrentLSN(tableConfig.Name)
 
 		// Fetch CDC changes since the last known LSN
-		changesFound, newLSN, err := fetchCDCChanges(monitor.dbConn, tableConfig.Name, columns, hex.EncodeToString(currentLSN))
+		changesFound, newLSN, err := monitor.fetchCDCChanges(monitor.dbConn, tableConfig.Name, columns, hex.EncodeToString(currentLSN))
 		if err != nil {
 			log.Printf("Error fetching changes for %s: %v", tableConfig.Name, err)
 			time.Sleep(pollInterval)
@@ -147,4 +182,126 @@ func (monitor *SQLServerMonitor) updatePollingIntervalAndLSN(tableName string, n
 	}
 
 	return pollInterval, nil
+}
+
+// fetchCDCChanges processes CDC changes and converts them to JSON events
+func (m *SQLServerMonitor) fetchCDCChanges(db *sql.DB, tableName string, columns []string, defaultStartLSN string) (bool, []byte, error) {
+	changesFound := false
+	var latestLSN []byte
+
+	lastLSN, err := loadLastLSN(db, tableName, defaultStartLSN)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to load last LSN for %s: %w", tableName, err)
+	}
+
+	rows, err := m.getCDCEntries(db, tableName, columns, lastLSN)
+	if err != nil {
+		return false, nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+
+		// Read Operation from CDC tables
+		lsn, operation, data, err := m.scanRowData(rows, columns)
+		if err != nil {
+			log.Printf("Error scanning row for table %s: %v", tableName, err)
+			continue
+		}
+
+		// Generate JSON payload
+		var jsonData string
+		jsonData, err = m.genJsonForEvent(tableName, operation, data, lsn)
+		if err != nil {
+			log.Printf("Error processing event for table %s: %v", tableName, err)
+			continue
+		}
+		log.Println(jsonData)
+
+		changesFound = true
+		latestLSN = lsn
+	}
+
+	return changesFound, latestLSN, nil
+}
+
+// getCDCEntries retrieves CDC entries for a given table and last LSN
+func (monitor *SQLServerMonitor) getCDCEntries(db *sql.DB, tableName string, columns []string, lastLSN []byte) (*sql.Rows, error) {
+	columnList := "__$start_lsn, __$operation, " + strings.Join(columns, ", ")
+	query := fmt.Sprintf(`
+        SELECT %s
+        FROM cdc.dbo_%s_CT
+        WHERE __$start_lsn > @lastLSN
+        ORDER BY __$start_lsn
+    `, columnList, tableName)
+
+	stmt, err := db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare statement for %s: %w", tableName, err)
+	}
+
+	rows, err := stmt.Query(sql.Named("lastLSN", lastLSN))
+	if err != nil {
+		stmt.Close()
+		return nil, fmt.Errorf("failed to query CDC table for %s: %w", tableName, err)
+	}
+	return rows, nil
+}
+
+// scanRowData scans a single row from the CDC result set into variables
+func (monitor *SQLServerMonitor) scanRowData(rows *sql.Rows, columns []string) ([]byte, int, map[string]interface{}, error) {
+	var lsn []byte
+	var operation int
+
+	scanTargets := make([]interface{}, len(columns)+2)
+	scanTargets[0] = &lsn
+	scanTargets[1] = &operation
+
+	data := make(map[string]interface{})
+	for i := range columns {
+		var colValue sql.NullString
+		scanTargets[i+2] = &colValue
+	}
+
+	if err := rows.Scan(scanTargets...); err != nil {
+		return nil, 0, nil, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	for i, colName := range columns {
+		if colValue, ok := scanTargets[i+2].(*sql.NullString); ok && colValue.Valid {
+			data[colName] = colValue.String
+		} else {
+			data[colName] = nil
+		}
+	}
+
+	return lsn, operation, data, nil
+}
+
+func (m *SQLServerMonitor) genJsonForEvent(tableName string, operation int, data map[string]interface{}, lsn []byte) (string, error) {
+	var op string
+	switch operation {
+	case 1:
+		op = "delete"
+	case 2:
+		op = "insert"
+	case 4: // Only capture the "after" image of the update
+		op = "update"
+	default:
+		// Ignore "before image" for updates (operation = 3)
+		return "", nil
+	}
+
+	jsonEvent := &JsonEvent{
+		Table: tableName,
+		Op:    op,
+		Data:  data,
+		LSN:   hex.EncodeToString(lsn),
+	}
+	jsonData, err := jsonEvent.toJsonPayload()
+	if err != nil {
+		return "", fmt.Errorf("error generating JSON event: %w", err)
+	}
+
+	return string(jsonData), nil
 }

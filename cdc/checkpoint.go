@@ -7,27 +7,6 @@ import (
 	"log"
 )
 
-// InitializeCheckpointTable checks for the existence of the cdc_offsets table and creates it if it doesn't exist
-func InitializeCheckpointTable(db *sql.DB) error {
-	query := `
-	IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'cdc_offsets')
-	BEGIN
-		CREATE TABLE cdc_offsets (
-			table_name NVARCHAR(255) PRIMARY KEY,
-			last_lsn VARBINARY(10),
-			updated_at DATETIME DEFAULT GETDATE()
-		);
-	END`
-
-	_, err := db.Exec(query)
-	if err != nil {
-		return fmt.Errorf("failed to create cdc_offsets table: %w", err)
-	}
-
-	log.Println("cdc_offsets table is ready (created if it didn't exist).")
-	return nil
-}
-
 // Load the last LSN from the database for a specific table
 func loadLastLSN(db *sql.DB, tableName, defaultStartLSN string) ([]byte, error) {
 	var lastLSN []byte
