@@ -7,82 +7,53 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 )
 
-// toJsonEvent converts raw CDC data to a JSON event compatible with Debezium’s structure
-func toJsonEvent(
-	tableName string,
-	operation int,
-	before, after map[string]interface{},
-	lsn []byte,
-) ([]byte, error) {
-	// Map operation types to JSON-compatible op codes
-	var op string
-	switch operation {
-	case 1:
-		op = "c" // Create
-	case 2:
-		op = "u" // Update
-	case 3:
-		op = "d" // Delete
-	default:
-		return nil, fmt.Errorf("unsupported operation type: %d", operation)
-	}
-
-	// Prepare JSON event structure
-	event := struct {
-		Schema  interface{} `json:"schema"`
-		Payload struct {
-			Before map[string]interface{} `json:"before,omitempty"`
-			After  map[string]interface{} `json:"after,omitempty"`
-			Source map[string]interface{} `json:"source"`
-			Op     string                 `json:"op"`
-			TsMs   int64                  `json:"ts_ms"`
-		} `json:"payload"`
-	}{
-		Schema: nil,
-		Payload: struct {
-			Before map[string]interface{} `json:"before,omitempty"`
-			After  map[string]interface{} `json:"after,omitempty"`
-			Source map[string]interface{} `json:"source"`
-			Op     string                 `json:"op"`
-			TsMs   int64                  `json:"ts_ms"`
-		}{
-			Before: before,
-			After:  after,
-			Source: map[string]interface{}{
-				"version":   "1.9.5.Final",
-				"connector": "sqlserver",
-				"name":      "dbserver1",
-				"db":        "TestDB",
-				"schema":    "dbo",
-				"table":     tableName,
-				"txId":      "example_tx_id", // Placeholder; replace as needed
-				"lsn":       hex.EncodeToString(lsn),
-				"commit":    true,
-			},
-			Op:   op,
-			TsMs: time.Now().UnixMilli(),
-		},
-	}
-
-	// Marshal the event to JSON
-	return json.MarshalIndent(event, "", "    ")
+// JsonEvent represents the simplified JSON structure for CDC events
+type JsonEvent struct {
+	Table string                 `json:"table"`
+	Op    string                 `json:"op"`
+	Data  map[string]interface{} `json:"data,omitempty"`
+	LSN   string                 `json:"lsn"`
 }
 
-// fetchCDCChanges adapted to call `toJsonEvent` for output formatting
+// fetchCDCChanges processes CDC changes and converts them to JSON events
 func fetchCDCChanges(db *sql.DB, tableName string, columns []string, defaultStartLSN string) (bool, []byte, error) {
 	changesFound := false
 	var latestLSN []byte
 
-	// Load the last LSN from the checkpoint table
 	lastLSN, err := loadLastLSN(db, tableName, defaultStartLSN)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to load last LSN for %s: %w", tableName, err)
 	}
 
-	// Prepare query
+	rows, err := getCDCEntries(db, tableName, columns, lastLSN)
+	if err != nil {
+		return false, nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		lsn, operation, data, err := scanRowData(rows, columns)
+		if err != nil {
+			log.Printf("Error scanning row for table %s: %v", tableName, err)
+			continue
+		}
+
+		if err := processCdcEvent(tableName, operation, data, lsn); err != nil {
+			log.Printf("Error processing event for table %s: %v", tableName, err)
+			continue
+		}
+
+		changesFound = true
+		latestLSN = lsn
+	}
+
+	return changesFound, latestLSN, nil
+}
+
+// getCDCEntries retrieves CDC entries for a given table and last LSN
+func getCDCEntries(db *sql.DB, tableName string, columns []string, lastLSN []byte) (*sql.Rows, error) {
 	columnList := "__$start_lsn, __$operation, " + strings.Join(columns, ", ")
 	query := fmt.Sprintf(`
         SELECT %s
@@ -93,65 +64,83 @@ func fetchCDCChanges(db *sql.DB, tableName string, columns []string, defaultStar
 
 	stmt, err := db.Prepare(query)
 	if err != nil {
-		return false, nil, fmt.Errorf("failed to prepare statement for %s: %w", tableName, err)
+		return nil, fmt.Errorf("failed to prepare statement for %s: %w", tableName, err)
 	}
-	defer stmt.Close()
 
-	// Query with last LSN parameter
 	rows, err := stmt.Query(sql.Named("lastLSN", lastLSN))
 	if err != nil {
-		return false, nil, fmt.Errorf("failed to query CDC table for %s: %w", tableName, err)
+		stmt.Close()
+		return nil, fmt.Errorf("failed to query CDC table for %s: %w", tableName, err)
 	}
-	defer rows.Close()
+	return rows, nil
+}
 
-	// Process each row
-	for rows.Next() {
-		lsn := []byte{}
-		operation := 0
-		scanTargets := make([]interface{}, len(columns)+2)
-		scanTargets[0] = &lsn
-		scanTargets[1] = &operation
+// scanRowData scans a single row from the CDC result set into variables
+func scanRowData(rows *sql.Rows, columns []string) ([]byte, int, map[string]interface{}, error) {
+	var lsn []byte
+	var operation int
 
-		before := make(map[string]interface{})
-		after := make(map[string]interface{})
-		for i := range columns {
-			var colValue sql.NullString
-			scanTargets[i+2] = &colValue
-		}
+	scanTargets := make([]interface{}, len(columns)+2)
+	scanTargets[0] = &lsn
+	scanTargets[1] = &operation
 
-		// Scan the row data into scanTargets
-		if err := rows.Scan(scanTargets...); err != nil {
-			return false, nil, fmt.Errorf("failed to scan row for %s: %w", tableName, err)
-		}
-
-		// Populate the "after" map with current column values
-		for i, colName := range columns {
-			if colValue, ok := scanTargets[i+2].(*sql.NullString); ok && colValue.Valid {
-				after[colName] = colValue.String
-			} else {
-				after[colName] = nil
-			}
-		}
-
-		// Set `before` only for update and delete operations
-		if operation == 2 || operation == 3 {
-			before = after // In this example, we’re using the same data for simplicity
-		}
-
-		// Generate JSON-compatible event
-		jsonData, err := toJsonEvent(tableName, operation, before, after, lsn)
-		if err != nil {
-			log.Printf("Error generating JSON event for table %s: %v", tableName, err)
-			continue
-		}
-
-		// Log the event
-		log.Println(string(jsonData))
-
-		// Update latestLSN to current row's LSN
-		changesFound = true
-		latestLSN = lsn
+	data := make(map[string]interface{})
+	for i := range columns {
+		var colValue sql.NullString
+		scanTargets[i+2] = &colValue
 	}
 
-	return changesFound, latestLSN, nil
+	if err := rows.Scan(scanTargets...); err != nil {
+		return nil, 0, nil, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	for i, colName := range columns {
+		if colValue, ok := scanTargets[i+2].(*sql.NullString); ok && colValue.Valid {
+			data[colName] = colValue.String
+		} else {
+			data[colName] = nil
+		}
+	}
+
+	return lsn, operation, data, nil
+}
+
+func processCdcEvent(tableName string, operation int, data map[string]interface{}, lsn []byte) error {
+	var op string
+	switch operation {
+	case 1:
+		op = "delete"
+	case 2:
+		op = "insert"
+	case 4: // Only capture the "after" image of the update
+		op = "update"
+	default:
+		// Ignore "before image" for updates (operation = 3)
+		return nil
+	}
+
+	jsonData, err := toJsonEvent(tableName, op, data, lsn)
+	if err != nil {
+		return fmt.Errorf("error generating JSON event: %w", err)
+	}
+
+	log.Println(string(jsonData))
+	return nil
+}
+
+// toJsonEvent formats the CDC event as a JsonEvent instance
+func toJsonEvent(
+	tableName string,
+	operation string,
+	data map[string]interface{},
+	lsn []byte,
+) ([]byte, error) {
+	event := JsonEvent{
+		Table: tableName,
+		Op:    operation,
+		Data:  data,
+		LSN:   hex.EncodeToString(lsn),
+	}
+
+	return json.MarshalIndent(event, "", "    ")
 }

@@ -98,6 +98,9 @@ func monitorTable(dbConn *sql.DB, tableConfig config.TableConfig) error {
 			}
 		}
 
+		// Log the next polling interval
+		log.Printf("Next poll for table %s will occur in %s", tableConfig.Name, pollInterval)
+
 		// Wait for the next poll interval
 		time.Sleep(pollInterval)
 	}
