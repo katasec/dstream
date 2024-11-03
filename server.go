@@ -33,41 +33,6 @@ func NewServer() *Server {
 	}
 }
 
-func (s *Server) Start2() {
-	// Load config file
-	config, err := config.LoadConfig("dstream.hcl")
-	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
-	}
-	s.config = config
-
-	// Get connection string from config and connect to the DB
-	dbConn, err := db.Connect(config.DBConnectionString)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	s.db = dbConn
-	defer dbConn.Close()
-
-	// Create a Monitor for the DB in the config file
-	monitor := cdc.NewSQLServerMonitor(dbConn)
-
-	// Initialize db checkpoints for the monitor
-	monitor.InitializeCheckpointTable(dbConn)
-	if err != nil {
-		log.Fatalf("Error initializing checkpoint table: %v", err)
-	}
-
-	// Start Monitoring
-	monitor.StartMonitoring(dbConn, *config)
-	if err != nil {
-		log.Fatalf("Error initializing checkpoint table: %v", err)
-	}
-
-	// Keep the application running
-	select {}
-}
-
 func (s *Server) Start() {
 
 	// Create a Monitor for the DB in the config file
