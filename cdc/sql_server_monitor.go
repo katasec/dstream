@@ -29,7 +29,7 @@ func NewSQLServerMonitor(dbConn *sql.DB, eventHubConn string, eventHubName strin
 	// Create a new Event Hub client
 	// Create a producer client
 	eventHubConn = strings.Trim(eventHubConn, " ")
-	log.Println(eventHubConn)
+	//log.Println(eventHubConn)
 	// producerClient, err := azeventhubs.NewProducerClientFromConnectionString(eventHubConn, "", nil)
 	// if err != nil {
 	// 	log.Fatalf("Failed to create producer client: %+v", err)
