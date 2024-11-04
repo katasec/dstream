@@ -9,26 +9,41 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azeventhubs"
 	"github.com/katasec/dstream/config"
 )
 
 // SQLServerMonitor manages SQL Server CDC monitoring for a given configuration
 type SQLServerMonitor struct {
-	dbConn   *sql.DB
-	lastLSNs map[string][]byte
-	lsnMutex sync.Mutex
+	dbConn         *sql.DB
+	lastLSNs       map[string][]byte
+	lsnMutex       sync.Mutex
+	producerClient *azeventhubs.ProducerClient
+	eventHubConn   string
+	eventHubName   string
 }
 
 // NewSQLServerMonitor initializes a new SQLServerMonitor with a database connection
-func NewSQLServerMonitor(dbConn *sql.DB) *SQLServerMonitor {
+func NewSQLServerMonitor(dbConn *sql.DB, eventHubConn string, eventHubName string) *SQLServerMonitor {
+
+	// Create a new Event Hub client
+	// Create a producer client
+	eventHubConn = strings.Trim(eventHubConn, " ")
+	log.Println(eventHubConn)
+	// producerClient, err := azeventhubs.NewProducerClientFromConnectionString(eventHubConn, "", nil)
+	// if err != nil {
+	// 	log.Fatalf("Failed to create producer client: %+v", err)
+	// }
+
 	return &SQLServerMonitor{
 		dbConn:   dbConn,
 		lastLSNs: make(map[string][]byte),
+		//producerClient: producerClient,
 	}
 }
 
 // InitializeCheckpointTable checks for the existence of the cdc_offsets table and creates it if it doesn't exist
-func (monitor *SQLServerMonitor) InitializeCheckpointTable(db *sql.DB) error {
+func (m *SQLServerMonitor) InitializeCheckpointTable() error {
 	query := `
 	IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'cdc_offsets')
 	BEGIN
@@ -39,18 +54,18 @@ func (monitor *SQLServerMonitor) InitializeCheckpointTable(db *sql.DB) error {
 		);
 	END`
 
-	_, err := db.Exec(query)
+	_, err := m.dbConn.Exec(query)
 	if err != nil {
 		return fmt.Errorf("failed to create cdc_offsets table: %w", err)
 	}
 
-	log.Println("cdc_offsets table is ready (created if it didn't exist).")
+	log.Println("Initialized checkpoints..")
 	return nil
 }
 
 // StartMonitoring launches monitoring for each configured table based on the SQLServerMonitor struct
-func (monitor *SQLServerMonitor) StartMonitoring(dbConn *sql.DB, cfg config.Config) {
-	sqlMonitor := NewSQLServerMonitor(dbConn)
+func (m *SQLServerMonitor) StartMonitoring(dbConn *sql.DB, cfg config.Config) {
+	sqlMonitor := NewSQLServerMonitor(dbConn, m.eventHubConn, m.eventHubName)
 	for _, tableConfig := range cfg.Tables {
 		go func(tableConfig config.TableConfig) {
 			err := sqlMonitor.MonitorTable(tableConfig)

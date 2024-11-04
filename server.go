@@ -20,6 +20,7 @@ func NewServer() *Server {
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
+	config.CheckConfig()
 
 	// Get connection string from config and connect to the DB
 	dbConn, err := db.Connect(config.DBConnectionString)
@@ -36,10 +37,10 @@ func NewServer() *Server {
 func (s *Server) Start() {
 
 	// Create a Monitor for the DB in the config file
-	monitor := cdc.NewSQLServerMonitor(s.db)
+	monitor := cdc.NewSQLServerMonitor(s.db, s.config.AzureEventHubConnectionString, s.config.EventHubName)
 
 	// Initialize db checkpoints for the monitor
-	err := monitor.InitializeCheckpointTable(s.db)
+	err := monitor.InitializeCheckpointTable()
 	if err != nil {
 		log.Fatalf("Error initializing checkpoint table: %v", err)
 	}

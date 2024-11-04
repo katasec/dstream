@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"os"
 	"text/template"
 	"time"
 
@@ -24,10 +25,29 @@ type OutputConfig struct {
 }
 
 type Config struct {
-	DBType             string        `hcl:"db_type"`
-	DBConnectionString string        `hcl:"db_connection_string"`
-	Output             OutputConfig  `hcl:"output,block"`
-	Tables             []TableConfig `hcl:"tables,block"`
+	DBType                        string        `hcl:"db_type"`
+	DBConnectionString            string        `hcl:"db_connection_string"`
+	AzureEventHubConnectionString string        `hcl:"azure_event_hub_connection_string"`
+	EventHubName                  string        `hcl:"azure_event_hub_name"`
+	Output                        OutputConfig  `hcl:"output,block"`
+	Tables                        []TableConfig `hcl:"tables,block"`
+}
+
+func (c *Config) CheckConfig() {
+	if c.AzureEventHubConnectionString == "" {
+		log.Println("Error, AzureEventHubConnectionString was not found, exitting.")
+		os.Exit(0)
+	}
+
+	if c.DBConnectionString == "" {
+		log.Println("Error, DBConnectionString was not found, exitting.")
+		os.Exit(0)
+	}
+
+	if c.EventHubName == "" {
+		log.Println("Error, EventHubName was not found, exitting.")
+		os.Exit(0)
+	}
 }
 
 // LoadConfig reads, processes the HCL configuration file, and replaces placeholders with environment variables

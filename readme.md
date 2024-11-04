@@ -1,3 +1,8 @@
+# IMPORTANT
+
+Please note that this is currently a very early POC - DO NOT USE IN PRODUCTION.
+
+
 # DStream
 
 **DStream**  is a lightweight, proof-of-concept (POC) application designed to monitor Microsoft SQL Server tables enabled with Change Data Capture (CDC) for updates. When changes are detected, **DStream**  streams the data to an Azure Event Hub for further processing, analytics, or event-driven applications. As a single-binary application with no external dependencies, **DStream**  is easy to install, deploy, and containerize, making it highly suitable for cloud-native and scalable environments.
