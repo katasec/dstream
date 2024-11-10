@@ -3,6 +3,7 @@ package publishers
 import (
 	"errors"
 	"log"
+	"strings"
 
 	"github.com/katasec/dstream/config"
 )
@@ -21,20 +22,24 @@ func NewChangePublisherFactory(config *config.Config) *ChangePublisherFactory {
 
 // Create returns a ChangePublisher based on the Output.Type in config.
 func (f *ChangePublisherFactory) Create() (ChangePublisher, error) {
-	switch f.config.Output.Type {
-	case "EventHub":
-		log.Println("Creating EventHub publisher...")
+	switch strings.ToLower(f.config.Output.Type) {
+	case "eventhub":
+		log.Println("*** Creating EventHub publisher...")
 		if f.config.Output.ConnectionString == "" {
 			return nil, errors.New("EventHub connection string is required")
 		}
 		return NewEventHubPublisher(f.config.Output.ConnectionString), nil
 
-	case "ServiceBus":
-		log.Println("Creating ServiceBus publisher...")
+	case "servicebus":
+		log.Println("*** Creating ServiceBus publisher...")
 		if f.config.Output.ConnectionString == "" {
 			return nil, errors.New("ServiceBus connection string is required")
 		}
-		return NewServiceBusPublisher(f.config.Output.ConnectionString), nil
+		p, err := NewServiceBusPublisher(f.config.Output.ConnectionString, "dstream-instance-1")
+		if err != nil {
+			log.Fatal(err)
+		}
+		return p, err
 
 	default:
 		// Default to console if no specific provider is specified

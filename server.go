@@ -21,6 +21,7 @@ func NewServer() *Server {
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
+
 	config.CheckConfig()
 
 	// Connect to the database
