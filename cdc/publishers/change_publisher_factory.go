@@ -1,10 +1,9 @@
-package cdc
+package publishers
 
 import (
 	"errors"
 	"log"
 
-	publishers "github.com/katasec/dstream/cdc/pubishers"
 	"github.com/katasec/dstream/config"
 )
 
@@ -21,7 +20,7 @@ func NewChangePublisherFactory(config *config.Config) *ChangePublisherFactory {
 }
 
 // Create returns a ChangePublisher based on the Output.Type in config.
-func (f *ChangePublisherFactory) Create() (publishers.ChangePublisher, error) {
+func (f *ChangePublisherFactory) Create() (ChangePublisher, error) {
 	switch f.config.Output.Type {
 	case "EventHub":
 		log.Println("Creating EventHub publisher...")

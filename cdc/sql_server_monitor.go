@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	publishers "github.com/katasec/dstream/cdc/publishers"
 )
 
 // SQLServerMonitor manages SQL Server CDC monitoring for a specific table
@@ -19,12 +21,12 @@ type SQLServerMonitor struct {
 	lastLSNs        map[string][]byte
 	lsnMutex        sync.Mutex
 	checkpointMgr   *CheckpointManager
-	publisher       ChangePublisher
+	publisher       publishers.ChangePublisher
 	columns         []string // Cached column names
 }
 
 // NewSQLServerMonitor initializes a new SQLServerMonitor for a specific table
-func NewSQLServerMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration, publisher ChangePublisher) *SQLServerMonitor {
+func NewSQLServerMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration, publisher publishers.ChangePublisher) *SQLServerMonitor {
 	checkpointMgr := NewCheckpointManager(dbConn, tableName)
 
 	// Fetch column names once and store them in the struct
@@ -80,7 +82,7 @@ func (m *SQLServerMonitor) MonitorTable() error {
 			log.Printf("Changes detected for table %s; publishing...", m.tableName)
 
 			// Publish detected changes
-			consolePublisher := &ConsolePublisher{}
+			consolePublisher := &publishers.ConsolePublisher{}
 			for _, change := range changes {
 
 				// Publish to console as a default

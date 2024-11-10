@@ -1,4 +1,4 @@
-package cdc
+package publishers
 
 import (
 	"encoding/json"

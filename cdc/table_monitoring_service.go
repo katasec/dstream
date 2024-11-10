@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/katasec/dstream/cdc/publishers"
 	"github.com/katasec/dstream/config"
 )
 
@@ -28,7 +29,7 @@ func (t *TableMonitoringService) StartMonitoring() error {
 	var wg sync.WaitGroup // WaitGroup to ensure goroutines complete
 
 	// Initialize ChangePublisherFactory
-	publisherFactory := NewChangePublisherFactory(t.config)
+	publisherFactory := publishers.NewChangePublisherFactory(t.config)
 
 	for _, tableConfig := range t.config.Tables {
 		wg.Add(1) // Increment the WaitGroup counter for each table
