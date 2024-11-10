@@ -12,8 +12,8 @@ import (
 
 // ServiceBusPublisher implements ChangePublisher, sends messages to Azure Service Bus
 type ServiceBusPublisher struct {
-	client           *azservicebus.Client
-	queueOrTopicName string
+	client    *azservicebus.Client
+	tableName string
 }
 
 // NewServiceBusPublisher creates a new ServiceBusPublisher with the provided connection string
@@ -24,8 +24,8 @@ func NewServiceBusPublisher(connectionString, queueOrTopicName string) (*Service
 	}
 
 	return &ServiceBusPublisher{
-		client:           client,
-		queueOrTopicName: queueOrTopicName,
+		client:    client,
+		tableName: queueOrTopicName,
 	}, nil
 }
 
@@ -45,7 +45,7 @@ func (s *ServiceBusPublisher) PublishChange(data map[string]interface{}) {
 	}
 
 	// Send the message to the Service Bus queue or topic
-	sender, err := s.client.NewSender(s.queueOrTopicName, nil)
+	sender, err := s.client.NewSender(s.tableName, nil)
 	if err != nil {
 		log.Printf("Failed to create Service Bus sender: %v", err)
 		return

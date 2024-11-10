@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -9,10 +10,12 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/Masterminds/sprig"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	queues "github.com/katasec/dstream/queues"
 )
 
 // TableConfig represents individual table configurations in the HCL file
@@ -45,16 +48,66 @@ func (c *Config) CheckConfig() {
 
 	// Validate based on Output Type requirements
 	switch strings.ToLower(c.Output.Type) {
-	case "eventHub", "servicebus":
+	case "eventHub":
 		if c.Output.ConnectionString == "" {
 			log.Fatalf("Error, %s connection string is required.", c.Output.Type)
 		}
+	case "servicebus":
+		c.serviceBusConfigCheck()
 	case "console":
 		// Console output type doesn't need a connection string.
 		log.Println("Output set to console; no additional connection string required.")
 	default:
 		log.Fatalf("Error, unknown output type: %s", c.Output.Type)
 	}
+}
+
+// serviceBusConfigCheck validates the Service Bus configuration and ensures queues exist for each table
+func (c *Config) serviceBusConfigCheck() {
+	if c.Output.ConnectionString == "" {
+		log.Fatalf("Error, %s connection string is required.", c.Output.Type)
+	}
+
+	// Create a Service Bus admin client
+	client, err := admin.NewClientFromConnectionString(c.Output.ConnectionString, nil)
+	if err != nil {
+		log.Fatalf("Failed to create Service Bus client: %v", err)
+	}
+
+	// Ensure each queue exists or create it if not
+	for _, table := range c.Tables {
+		//queueName := GetServiceBusQueueName(table.Name)
+		queueName := queues.GetServiceBusQueueName(c.DBConnectionString, table.Name)
+		log.Printf("Ensuring queue exists: %s\n", queueName)
+
+		// Check and create queue if it doesn't exist
+		if err := createQueueIfNotExists(client, queueName); err != nil {
+			log.Fatalf("Error ensuring queue %s exists: %v", queueName, err)
+		}
+	}
+}
+
+// createQueueIfNotExists checks if a queue exists and creates it if it doesn’t
+func createQueueIfNotExists(client *admin.Client, queueName string) error {
+	// Check if the queue exists
+	response, err := client.GetQueue(context.TODO(), queueName, nil)
+	if err == nil && response != nil {
+		log.Printf("Queue %s already exists.\n", queueName)
+		return nil // Queue already exists
+	}
+	// Check if the error is a "not found" error based on HTTP status code
+	log.Printf("Queue %s does not exist. Creating...\n", queueName)
+	response2, err := client.CreateQueue(context.TODO(), queueName, nil)
+	if err != nil {
+		log.Fatalf("failed to create queue %s: %s", queueName, err)
+	}
+	fmt.Printf("Queue %s created successfully. Status: %d\n", queueName, response2.Status)
+	return nil
+}
+
+func GetServiceBusQueueName(tableName string) string {
+	tableName = strings.ToLower(tableName)
+	return fmt.Sprintf("%s-events", tableName)
 }
 
 // LoadConfig reads, processes the HCL configuration file, and replaces placeholders with environment variables
