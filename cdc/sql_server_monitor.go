@@ -108,68 +108,6 @@ func (m *SQLServerMonitor) MonitorTable() error {
 	}
 }
 
-// fetchCDCChanges queries CDC changes and returns them as a slice of maps
-// func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
-// 	log.Printf("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
-
-// 	// Use cached column names
-// 	columnList := "ct.__$start_lsn, ct.__$operation, " + strings.Join(monitor.columns, ", ")
-// 	query := fmt.Sprintf(`
-//         SELECT %s
-//         FROM cdc.dbo_%s_CT AS ct
-//         WHERE ct.__$start_lsn > @lastLSN
-//         ORDER BY ct.__$start_lsn
-//     `, columnList, monitor.tableName)
-
-// 	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
-// 	if err != nil {
-// 		return nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
-// 	}
-// 	defer rows.Close()
-
-// 	changes := []map[string]interface{}{}
-// 	var latestLSN []byte
-
-// 	for rows.Next() {
-// 		var lsn []byte
-// 		var operation int
-// 		columnData := make([]interface{}, len(monitor.columns)+2)
-// 		columnData[0] = &lsn
-// 		columnData[1] = &operation
-// 		for i := range monitor.columns {
-// 			var colValue sql.NullString
-// 			columnData[i+2] = &colValue
-// 		}
-
-// 		if err := rows.Scan(columnData...); err != nil {
-// 			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
-// 		}
-
-// 		data := map[string]interface{}{"LSN": hex.EncodeToString(lsn), "Operation": operation}
-// 		for i, colName := range monitor.columns {
-// 			if colValue, ok := columnData[i+2].(*sql.NullString); ok && colValue.Valid {
-// 				data[colName] = colValue.String
-// 			} else {
-// 				data[colName] = nil
-// 			}
-// 		}
-
-// 		changes = append(changes, data)
-// 		latestLSN = lsn
-// 	}
-
-// 	// Save the last LSN if changes were found
-// 	if len(changes) > 0 {
-// 		log.Printf("Saving new last LSN for table %s: %x", monitor.tableName, latestLSN)
-// 		err := monitor.checkpointMgr.SaveLastLSN(latestLSN)
-// 		if err != nil {
-// 			return nil, nil, fmt.Errorf("failed to save last LSN for %s: %w", monitor.tableName, err)
-// 		}
-// 	}
-
-// 	return changes, latestLSN, nil
-// }
-
 // fetchCDCChanges queries CDC changes and returns relevant events as a slice of maps
 func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
 	log.Printf("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
