@@ -82,11 +82,11 @@ func (m *SQLServerMonitor) MonitorTable() error {
 			log.Printf("Changes detected for table %s; publishing...", m.tableName)
 
 			// Publish detected changes
-			consolePublisher := &publishers.ConsolePublisher{}
+			//consolePublisher := &publishers.ConsolePublisher{}
 			for _, change := range changes {
 
 				// Publish to console as a default
-				consolePublisher.PublishChange(change)
+				// consolePublisher.PublishChange(change)
 
 				// publish to publisher configured for this table
 				m.publisher.PublishChange(change)
@@ -170,7 +170,7 @@ func (m *SQLServerMonitor) MonitorTable() error {
 // 	return changes, latestLSN, nil
 // }
 
-// fetchCDCChanges queries CDC changes and returns only "after" events as a slice of maps
+// fetchCDCChanges queries CDC changes and returns relevant events as a slice of maps
 func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
 	log.Printf("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
 
@@ -207,24 +207,38 @@ func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]i
 			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
-		// Process only "after" image events (operation = 4)
-		if operation == 4 {
-			data := map[string]interface{}{
-				"TableName": monitor.tableName,       // Add table name to the message
-				"LSN":       hex.EncodeToString(lsn), // Convert LSN to hex string
-				"Operation": "update",                // Specify "update" for after images
-			}
-			for i, colName := range monitor.columns {
-				if colValue, ok := columnData[i+2].(*sql.NullString); ok && colValue.Valid {
-					data[colName] = colValue.String
-				} else {
-					data[colName] = nil
-				}
-			}
-
-			changes = append(changes, data)
-			latestLSN = lsn
+		// Determine the operation type as a string
+		var operationType string
+		switch operation {
+		case 2:
+			operationType = "Insert"
+		case 4:
+			operationType = "Update"
+		case 1:
+			operationType = "Delete"
+		default:
+			// Skip any unknown operation types
+			continue
 		}
+
+		// Capture relevant data including the table name, operation ID, and operation type
+		data := map[string]interface{}{
+			"TableName":     monitor.tableName,
+			"LSN":           hex.EncodeToString(lsn),
+			"OperationID":   operation,     // Original operation ID
+			"OperationType": operationType, // Descriptive operation type
+		}
+
+		for i, colName := range monitor.columns {
+			if colValue, ok := columnData[i+2].(*sql.NullString); ok && colValue.Valid {
+				data[colName] = colValue.String
+			} else {
+				data[colName] = nil
+			}
+		}
+
+		changes = append(changes, data)
+		latestLSN = lsn
 	}
 
 	// Save the last LSN if changes were found

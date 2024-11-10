@@ -6,7 +6,7 @@ db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING"  }}"
 
 # Output configuration
 output {
-    type = "console"  # Possible values: "console", "eventhub", "servicebus"
+    type = "servicebus"  # Possible values: "console", "eventhub", "servicebus"
     connection_string = "{{ env "DSTREAM_PUBLISHER_CONNECTION_STRING"  }}"  # Used if type is "eventhub" or "servicebus"
 }
 
