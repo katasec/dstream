@@ -9,145 +9,254 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azeventhubs"
-	"github.com/katasec/dstream/config"
+	publishers "github.com/katasec/dstream/cdc/publishers"
 )
 
-// SQLServerMonitor manages SQL Server CDC monitoring for a given configuration
+// SQLServerMonitor manages SQL Server CDC monitoring for a specific table
 type SQLServerMonitor struct {
-	dbConn         *sql.DB
-	lastLSNs       map[string][]byte
-	lsnMutex       sync.Mutex
-	producerClient *azeventhubs.ProducerClient
-	eventHubConn   string
-	eventHubName   string
+	dbConn          *sql.DB
+	tableName       string
+	pollInterval    time.Duration
+	maxPollInterval time.Duration
+	lastLSNs        map[string][]byte
+	lsnMutex        sync.Mutex
+	checkpointMgr   *CheckpointManager
+	publisher       publishers.ChangePublisher
+	columns         []string // Cached column names
 }
 
-// NewSQLServerMonitor initializes a new SQLServerMonitor with a database connection
-func NewSQLServerMonitor(dbConn *sql.DB, eventHubConn string, eventHubName string) *SQLServerMonitor {
+// NewSQLServerMonitor initializes a new SQLServerMonitor for a specific table
+func NewSQLServerMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration, publisher publishers.ChangePublisher) *SQLServerMonitor {
+	checkpointMgr := NewCheckpointManager(dbConn, tableName)
 
-	// Create a new Event Hub client
-	// Create a producer client
-	eventHubConn = strings.Trim(eventHubConn, " ")
-	//log.Println(eventHubConn)
-	// producerClient, err := azeventhubs.NewProducerClientFromConnectionString(eventHubConn, "", nil)
-	// if err != nil {
-	// 	log.Fatalf("Failed to create producer client: %+v", err)
-	// }
+	// Fetch column names once and store them in the struct
+	columns, err := fetchColumnNames(dbConn, tableName)
+	if err != nil {
+		log.Fatalf("Failed to fetch column names for table %s: %v", tableName, err)
+	}
 
 	return &SQLServerMonitor{
-		dbConn:   dbConn,
-		lastLSNs: make(map[string][]byte),
-		//producerClient: producerClient,
+		dbConn:          dbConn,
+		tableName:       tableName,
+		pollInterval:    pollInterval,
+		maxPollInterval: maxPollInterval,
+		lastLSNs:        make(map[string][]byte),
+		checkpointMgr:   checkpointMgr,
+		publisher:       publisher,
+		columns:         columns,
 	}
 }
 
-// InitializeCheckpointTable checks for the existence of the cdc_offsets table and creates it if it doesn't exist
-func (m *SQLServerMonitor) InitializeCheckpointTable() error {
-	query := `
-	IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'cdc_offsets')
-	BEGIN
-		CREATE TABLE cdc_offsets (
-			table_name NVARCHAR(255) PRIMARY KEY,
-			last_lsn VARBINARY(10),
-			updated_at DATETIME DEFAULT GETDATE()
-		);
-	END`
-
-	_, err := m.dbConn.Exec(query)
+// MonitorTable continuously monitors the specified table
+func (m *SQLServerMonitor) MonitorTable() error {
+	err := m.checkpointMgr.InitializeCheckpointTable()
 	if err != nil {
-		return fmt.Errorf("failed to create cdc_offsets table: %w", err)
+		return fmt.Errorf("error initializing checkpoint table: %w", err)
 	}
 
-	log.Println("Initialized checkpoints..")
-	return nil
-}
-
-// StartMonitoring launches monitoring for each configured table based on the SQLServerMonitor struct
-func (m *SQLServerMonitor) StartMonitoring(dbConn *sql.DB, cfg config.Config) {
-	sqlMonitor := NewSQLServerMonitor(dbConn, m.eventHubConn, m.eventHubName)
-	for _, tableConfig := range cfg.Tables {
-		go func(tableConfig config.TableConfig) {
-			err := sqlMonitor.MonitorTable(tableConfig)
-			if err != nil {
-				log.Printf("Monitoring stopped for table %s due to error: %v", tableConfig.Name, err)
-			}
-		}(tableConfig)
-	}
-}
-
-// MonitorTable continuously monitors a specific table for CDC changes
-func (monitor *SQLServerMonitor) MonitorTable(tableConfig config.TableConfig) error {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered from panic in MonitorTable for table %s: %v", tableConfig.Name, r)
-		}
-	}()
-
-	// Initialize LSN for this table
-	err := monitor.initializeLSN(tableConfig.Name)
-	if err != nil {
-		return err
-	}
-
-	// Set the initial poll interval
-	pollInterval, _ := tableConfig.GetPollInterval()
-
-	for {
-		// Fetch column names for the table
-		columns, err := monitor.GetColumnNames("dbo", tableConfig.Name)
-		if err != nil {
-			log.Printf("Failed to get columns for %s: %v", tableConfig.Name, err)
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		// Get the current LSN safely
-		currentLSN := monitor.getCurrentLSN(tableConfig.Name)
-
-		// Fetch CDC changes since the last known LSN
-		changesFound, newLSN, err := monitor.fetchCDCChanges(monitor.dbConn, tableConfig.Name, columns, hex.EncodeToString(currentLSN))
-		if err != nil {
-			log.Printf("Error fetching changes for %s: %v", tableConfig.Name, err)
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		// Update polling interval and LSN based on whether changes were found
-		pollInterval, err = monitor.updatePollingIntervalAndLSN(tableConfig.Name, newLSN, changesFound, pollInterval, tableConfig)
-		if err != nil {
-			log.Printf("Error updating LSN and polling interval for %s: %v", tableConfig.Name, err)
-		}
-
-		// Log the next polling interval
-		log.Printf("Next poll for table %s will occur in %s", tableConfig.Name, pollInterval)
-
-		// Wait for the next poll interval
-		time.Sleep(pollInterval)
-	}
-}
-
-// initializeLSN loads the initial LSN for a table from the database into memory
-func (monitor *SQLServerMonitor) initializeLSN(tableName string) error {
+	// Load last LSN for this table
 	defaultStartLSN := "00000000000000000000"
-	initialLSN, err := monitor.loadLastLSN(monitor.dbConn, tableName, defaultStartLSN)
+	initialLSN, err := m.checkpointMgr.LoadLastLSN(defaultStartLSN)
 	if err != nil {
-		log.Printf("Failed to load initial LSN for %s: %v", tableName, err)
-		return err
+		return fmt.Errorf("error loading last LSN for table %s: %w", m.tableName, err)
 	}
+	m.lsnMutex.Lock()
+	m.lastLSNs[m.tableName] = initialLSN
+	m.lsnMutex.Unlock()
 
-	// Store the initial LSN in the in-memory map
-	monitor.lsnMutex.Lock()
-	monitor.lastLSNs[tableName] = initialLSN
-	monitor.lsnMutex.Unlock()
+	// Initialize the backoff manager
+	backoff := NewBackoffManager(m.pollInterval, m.maxPollInterval)
 
-	return nil
+	// Begin monitoring loop
+	for {
+		log.Printf("Polling changes for table: %s", m.tableName)
+		changes, newLSN, err := m.fetchCDCChanges(m.lastLSNs[m.tableName])
+
+		if err != nil {
+			log.Printf("Error fetching changes for %s: %v", m.tableName, err)
+			time.Sleep(backoff.GetInterval()) // Wait with current interval on error
+			continue
+		}
+
+		if len(changes) > 0 {
+			log.Printf("Changes detected for table %s; publishing...", m.tableName)
+
+			// Publish detected changes
+			//consolePublisher := &publishers.ConsolePublisher{}
+			for _, change := range changes {
+
+				// Publish to console as a default
+				// consolePublisher.PublishChange(change)
+
+				// publish to publisher configured for this table
+				m.publisher.PublishChange(change)
+			}
+
+			// Update last LSN and reset polling interval
+			m.lsnMutex.Lock()
+			m.lastLSNs[m.tableName] = newLSN
+			m.lsnMutex.Unlock()
+			backoff.ResetInterval() // Reset interval after detecting changes
+
+		} else {
+			// If no changes, increase the polling interval (backoff)
+			backoff.IncreaseInterval()
+			log.Printf("No changes found for table %s. Next poll in %s", m.tableName, backoff.GetInterval())
+		}
+
+		time.Sleep(backoff.GetInterval())
+	}
 }
 
-// GetColumnNames retrieves column names for a given table in the schema
-func (monitor *SQLServerMonitor) GetColumnNames(schema, tableName string) ([]string, error) {
-	query := `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @tableName`
-	rows, err := monitor.dbConn.Query(query, sql.Named("schema", schema), sql.Named("tableName", tableName))
+// fetchCDCChanges queries CDC changes and returns them as a slice of maps
+// func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
+// 	log.Printf("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
+
+// 	// Use cached column names
+// 	columnList := "ct.__$start_lsn, ct.__$operation, " + strings.Join(monitor.columns, ", ")
+// 	query := fmt.Sprintf(`
+//         SELECT %s
+//         FROM cdc.dbo_%s_CT AS ct
+//         WHERE ct.__$start_lsn > @lastLSN
+//         ORDER BY ct.__$start_lsn
+//     `, columnList, monitor.tableName)
+
+// 	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
+// 	if err != nil {
+// 		return nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
+// 	}
+// 	defer rows.Close()
+
+// 	changes := []map[string]interface{}{}
+// 	var latestLSN []byte
+
+// 	for rows.Next() {
+// 		var lsn []byte
+// 		var operation int
+// 		columnData := make([]interface{}, len(monitor.columns)+2)
+// 		columnData[0] = &lsn
+// 		columnData[1] = &operation
+// 		for i := range monitor.columns {
+// 			var colValue sql.NullString
+// 			columnData[i+2] = &colValue
+// 		}
+
+// 		if err := rows.Scan(columnData...); err != nil {
+// 			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
+// 		}
+
+// 		data := map[string]interface{}{"LSN": hex.EncodeToString(lsn), "Operation": operation}
+// 		for i, colName := range monitor.columns {
+// 			if colValue, ok := columnData[i+2].(*sql.NullString); ok && colValue.Valid {
+// 				data[colName] = colValue.String
+// 			} else {
+// 				data[colName] = nil
+// 			}
+// 		}
+
+// 		changes = append(changes, data)
+// 		latestLSN = lsn
+// 	}
+
+// 	// Save the last LSN if changes were found
+// 	if len(changes) > 0 {
+// 		log.Printf("Saving new last LSN for table %s: %x", monitor.tableName, latestLSN)
+// 		err := monitor.checkpointMgr.SaveLastLSN(latestLSN)
+// 		if err != nil {
+// 			return nil, nil, fmt.Errorf("failed to save last LSN for %s: %w", monitor.tableName, err)
+// 		}
+// 	}
+
+// 	return changes, latestLSN, nil
+// }
+
+// fetchCDCChanges queries CDC changes and returns relevant events as a slice of maps
+func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
+	log.Printf("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
+
+	// Use cached column names
+	columnList := "ct.__$start_lsn, ct.__$operation, " + strings.Join(monitor.columns, ", ")
+	query := fmt.Sprintf(`
+        SELECT %s
+        FROM cdc.dbo_%s_CT AS ct
+        WHERE ct.__$start_lsn > @lastLSN
+        ORDER BY ct.__$start_lsn
+    `, columnList, monitor.tableName)
+
+	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
+	}
+	defer rows.Close()
+
+	changes := []map[string]interface{}{}
+	var latestLSN []byte
+
+	for rows.Next() {
+		var lsn []byte
+		var operation int
+		columnData := make([]interface{}, len(monitor.columns)+2)
+		columnData[0] = &lsn
+		columnData[1] = &operation
+		for i := range monitor.columns {
+			var colValue sql.NullString
+			columnData[i+2] = &colValue
+		}
+
+		if err := rows.Scan(columnData...); err != nil {
+			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Determine the operation type as a string
+		var operationType string
+		switch operation {
+		case 2:
+			operationType = "Insert"
+		case 4:
+			operationType = "Update"
+		case 1:
+			operationType = "Delete"
+		default:
+			// Skip any unknown operation types
+			continue
+		}
+
+		// Capture relevant data including the table name, operation ID, and operation type
+		data := map[string]interface{}{
+			"TableName":     monitor.tableName,
+			"LSN":           hex.EncodeToString(lsn),
+			"OperationID":   operation,     // Original operation ID
+			"OperationType": operationType, // Descriptive operation type
+		}
+
+		for i, colName := range monitor.columns {
+			if colValue, ok := columnData[i+2].(*sql.NullString); ok && colValue.Valid {
+				data[colName] = colValue.String
+			} else {
+				data[colName] = nil
+			}
+		}
+
+		changes = append(changes, data)
+		latestLSN = lsn
+	}
+
+	// Save the last LSN if changes were found
+	if len(changes) > 0 {
+		log.Printf("Saving new last LSN for table %s: %x", monitor.tableName, latestLSN)
+		err := monitor.checkpointMgr.SaveLastLSN(latestLSN)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to save last LSN for %s: %w", monitor.tableName, err)
+		}
+	}
+
+	return changes, latestLSN, nil
+}
+
+// fetchColumnNames fetches column names for a specified table
+func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
+	query := `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tableName`
+	rows, err := db.Query(query, sql.Named("tableName", tableName))
 	if err != nil {
 		return nil, err
 	}
@@ -162,214 +271,4 @@ func (monitor *SQLServerMonitor) GetColumnNames(schema, tableName string) ([]str
 		columns = append(columns, columnName)
 	}
 	return columns, rows.Err()
-}
-
-// getCurrentLSN retrieves the current LSN for a table from the in-memory map with thread-safe locking
-func (monitor *SQLServerMonitor) getCurrentLSN(tableName string) []byte {
-	monitor.lsnMutex.Lock()
-	defer monitor.lsnMutex.Unlock()
-	return monitor.lastLSNs[tableName]
-}
-
-// updatePollingIntervalAndLSN adjusts the polling interval and updates the last LSN
-func (m *SQLServerMonitor) updatePollingIntervalAndLSN(tableName string, newLSN []byte, changesFound bool, pollInterval time.Duration, tableConfig config.TableConfig) (time.Duration, error) {
-	if changesFound {
-		// Update the in-memory last LSN for this table
-		m.lsnMutex.Lock()
-		m.lastLSNs[tableName] = newLSN
-		m.lsnMutex.Unlock()
-
-		// Persist the new LSN to the database
-		err := m.saveLastLSN(m.dbConn, tableName, newLSN)
-		if err != nil {
-			return pollInterval, fmt.Errorf("error saving last LSN for %s: %v", tableName, err)
-		}
-
-		// Reset poll interval after successful processing
-		pollInterval, _ = tableConfig.GetPollInterval()
-	} else {
-		// Back off the poll interval up to the max interval if no changes were found
-		pollInterval *= 2
-		maxPollInterval, _ := tableConfig.GetMaxPollInterval()
-		if pollInterval > maxPollInterval {
-			pollInterval = maxPollInterval
-		}
-	}
-
-	return pollInterval, nil
-}
-
-// fetchCDCChanges processes CDC changes and converts them to JSON events
-func (m *SQLServerMonitor) fetchCDCChanges(db *sql.DB, tableName string, columns []string, defaultStartLSN string) (bool, []byte, error) {
-	changesFound := false
-	var latestLSN []byte
-
-	lastLSN, err := m.loadLastLSN(db, tableName, defaultStartLSN)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to load last LSN for %s: %w", tableName, err)
-	}
-
-	rows, err := m.getCDCEntries(db, tableName, columns, lastLSN)
-	if err != nil {
-		return false, nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-
-		// Read Operation from CDC tables
-		lsn, operation, data, err := m.scanRowData(rows, columns)
-		if err != nil {
-			log.Printf("Error scanning row for table %s: %v", tableName, err)
-			continue
-		}
-
-		// Generate JSON payload
-		var jsonData string
-		jsonData, err = m.genJsonForEvent(tableName, operation, data, lsn)
-		if err != nil {
-			log.Printf("Error processing event for table %s: %v", tableName, err)
-			continue
-		}
-		log.Println(jsonData)
-
-		changesFound = true
-		latestLSN = lsn
-	}
-
-	return changesFound, latestLSN, nil
-}
-
-// getCDCEntries retrieves CDC entries for a given table and last LSN
-func (monitor *SQLServerMonitor) getCDCEntries(db *sql.DB, tableName string, columns []string, lastLSN []byte) (*sql.Rows, error) {
-	columnList := "__$start_lsn, __$operation, " + strings.Join(columns, ", ")
-	query := fmt.Sprintf(`
-        SELECT %s
-        FROM cdc.dbo_%s_CT
-        WHERE __$start_lsn > @lastLSN
-        ORDER BY __$start_lsn
-    `, columnList, tableName)
-
-	stmt, err := db.Prepare(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare statement for %s: %w", tableName, err)
-	}
-
-	rows, err := stmt.Query(sql.Named("lastLSN", lastLSN))
-	if err != nil {
-		stmt.Close()
-		return nil, fmt.Errorf("failed to query CDC table for %s: %w", tableName, err)
-	}
-	return rows, nil
-}
-
-// scanRowData scans a single row from the CDC result set into variables
-func (m *SQLServerMonitor) scanRowData(rows *sql.Rows, columns []string) ([]byte, int, map[string]interface{}, error) {
-	var lsn []byte
-	var operation int
-
-	scanTargets := make([]interface{}, len(columns)+2)
-	scanTargets[0] = &lsn
-	scanTargets[1] = &operation
-
-	data := make(map[string]interface{})
-	for i := range columns {
-		var colValue sql.NullString
-		scanTargets[i+2] = &colValue
-	}
-
-	if err := rows.Scan(scanTargets...); err != nil {
-		return nil, 0, nil, fmt.Errorf("failed to scan row: %w", err)
-	}
-
-	for i, colName := range columns {
-		if colValue, ok := scanTargets[i+2].(*sql.NullString); ok && colValue.Valid {
-			data[colName] = colValue.String
-		} else {
-			data[colName] = nil
-		}
-	}
-
-	return lsn, operation, data, nil
-}
-
-func (m *SQLServerMonitor) genJsonForEvent(tableName string, operation int, data map[string]interface{}, lsn []byte) (string, error) {
-	var op string
-	switch operation {
-	case 1:
-		op = "delete"
-	case 2:
-		op = "insert"
-	case 4: // Only capture the "after" image of the update
-		op = "update"
-	default:
-		// Ignore "before image" for updates (operation = 3)
-		return "", nil
-	}
-
-	jsonEvent := &JsonEvent{
-		Table: tableName,
-		Op:    op,
-		Data:  data,
-		LSN:   hex.EncodeToString(lsn),
-	}
-	jsonData, err := jsonEvent.toJsonPayload()
-	if err != nil {
-		return "", fmt.Errorf("error generating JSON event: %w", err)
-	}
-
-	return string(jsonData), nil
-}
-
-// Load the last LSN from the database for a specific table
-func (m *SQLServerMonitor) loadLastLSN(db *sql.DB, tableName, defaultStartLSN string) ([]byte, error) {
-	var lastLSN []byte
-	query := "SELECT last_lsn FROM cdc_offsets WHERE table_name = @tableName"
-	err := db.QueryRow(query, sql.Named("tableName", tableName)).Scan(&lastLSN)
-	if err == sql.ErrNoRows {
-		// If no checkpoint exists, initialize with a default LSN
-		startLSNBytes, _ := hex.DecodeString(defaultStartLSN)
-		lastLSN = startLSNBytes
-		log.Printf("No previous LSN for %s. Initializing with default start LSN.", tableName)
-	} else if err != nil {
-		return nil, fmt.Errorf("failed to load LSN for %s: %w", tableName, err)
-	} else {
-		log.Printf("Resuming %s from last LSN: %s", tableName, hex.EncodeToString(lastLSN))
-	}
-	return lastLSN, nil
-}
-
-// Save the last processed LSN for a specific table to the database if it has changed
-func (m *SQLServerMonitor) saveLastLSN(db *sql.DB, tableName string, newLSN []byte) error {
-	// Check if the last LSN in the database matches the new LSN
-	var currentLSN []byte
-	query := "SELECT last_lsn FROM cdc_offsets WHERE table_name = @tableName"
-	err := db.QueryRow(query, sql.Named("tableName", tableName)).Scan(&currentLSN)
-
-	if err == nil && string(currentLSN) == string(newLSN) {
-		// If the current LSN matches the new LSN, skip updating
-		log.Printf("No change in LSN for %s; skipping save.", tableName)
-		return nil
-	} else if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("failed to check current LSN for %s: %w", tableName, err)
-	}
-
-	// SQL Server-compatible upsert using MERGE
-	upsertQuery := `
-	MERGE INTO cdc_offsets AS target
-	USING (VALUES (@tableName, @lastLSN, GETDATE())) AS source (table_name, last_lsn, updated_at)
-	ON target.table_name = source.table_name
-	WHEN MATCHED THEN 
-		UPDATE SET last_lsn = source.last_lsn, updated_at = source.updated_at
-	WHEN NOT MATCHED THEN
-		INSERT (table_name, last_lsn, updated_at) 
-		VALUES (source.table_name, source.last_lsn, source.updated_at);`
-
-	_, err = db.Exec(upsertQuery, sql.Named("tableName", tableName), sql.Named("lastLSN", newLSN))
-	if err != nil {
-		return fmt.Errorf("failed to save LSN for %s: %w", tableName, err)
-	}
-
-	log.Printf("Saved new LSN for %s: %s", tableName, hex.EncodeToString(newLSN))
-	return nil
 }

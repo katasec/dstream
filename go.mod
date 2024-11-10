@@ -3,7 +3,7 @@ module github.com/katasec/dstream
 go 1.22.1
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/messaging/azeventhubs v1.2.3
+	github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus v1.7.3
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/hashicorp/hcl/v2 v2.22.0
@@ -12,7 +12,7 @@ require (
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.13.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
-	github.com/Azure/go-amqp v1.0.5 // indirect
+	github.com/Azure/go-amqp v1.1.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/agext/levenshtein v1.2.1 // indirect

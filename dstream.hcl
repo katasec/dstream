@@ -4,12 +4,10 @@ db_type = "sqlserver"
 # Connection string for the database
 db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING"  }}"
 
-# Event Hub Connection String
-azure_event_hub_connection_string = "{{ env "DSTREAM_EH_CONNECTION_STRING"  }}"
-azure_event_hub_name = "{{ env "DSTREAM_EH_NAME"  }}"
-# Output provider type
+# Output configuration
 output {
-    type = "console"
+    type = "servicebus"  # Possible values: "console", "eventhub", "servicebus"
+    connection_string = "{{ env "DSTREAM_PUBLISHER_CONNECTION_STRING"  }}"  # Used if type is "eventhub" or "servicebus"
 }
 
 # Table configurations with polling intervals
@@ -24,8 +22,6 @@ tables {
     poll_interval = "5s"
     max_poll_interval = "2m"
 }
-
-
 
 tables {
     name = "Dano"
