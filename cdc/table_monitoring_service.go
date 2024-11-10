@@ -38,7 +38,7 @@ func (t *TableMonitoringService) StartMonitoring() error {
 		maxPollInterval, _ := tableConfig.GetMaxPollInterval()
 
 		// Create the appropriate publisher for the table
-		publisher, err := publisherFactory.Create()
+		publisher, err := publisherFactory.Create(tableConfig.Name)
 		if err != nil {
 			log.Printf("Error creating publisher for table %s: %v", tableConfig.Name, err)
 			wg.Done()
