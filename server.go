@@ -14,6 +14,7 @@ type Server struct {
 	db     *sql.DB
 }
 
+// NewServer initializes the server, loads the configuration, and connects to the database
 func NewServer() *Server {
 	// Load config file
 	config, err := config.LoadConfig("dstream.hcl")
@@ -22,7 +23,7 @@ func NewServer() *Server {
 	}
 	config.CheckConfig()
 
-	// Get connection string from config and connect to the DB
+	// Connect to the database
 	dbConn, err := db.Connect(config.DBConnectionString)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -34,19 +35,16 @@ func NewServer() *Server {
 	}
 }
 
+// Start initializes the TableMonitoringService and begins monitoring each table in the config
 func (s *Server) Start() {
+	// Create a new instance of TableMonitoringService
+	tableService := cdc.NewTableMonitoringService(s.db, s.config)
 
-	// Create a Monitor for the DB in the config file
-	monitor := cdc.NewSQLServerMonitor(s.db, s.config.AzureEventHubConnectionString, s.config.EventHubName)
-
-	// Initialize db checkpoints for the monitor
-	err := monitor.InitializeCheckpointTable()
+	// Start the TableMonitoringService
+	err := tableService.StartMonitoring()
 	if err != nil {
-		log.Fatalf("Error initializing checkpoint table: %v", err)
+		log.Fatalf("Failed to start monitoring service: %v", err)
 	}
-
-	// Start Monitoring
-	monitor.StartMonitoring(s.db, *s.config)
 
 	// Keep the application running
 	select {}

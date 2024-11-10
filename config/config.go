@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"text/template"
 	"time"
 
@@ -14,39 +15,45 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
+// TableConfig represents individual table configurations in the HCL file
 type TableConfig struct {
 	Name            string `hcl:"name"`
 	PollInterval    string `hcl:"poll_interval"`
 	MaxPollInterval string `hcl:"max_poll_interval"`
 }
 
+// OutputConfig represents the configuration for output type and connection string
 type OutputConfig struct {
-	Type string `hcl:"type"`
+	Type             string `hcl:"type"`                   // e.g., "EventHub", "ServiceBus", "Console"
+	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
 }
 
+// Config holds the entire configuration as represented in the HCL file
 type Config struct {
-	DBType                        string        `hcl:"db_type"`
-	DBConnectionString            string        `hcl:"db_connection_string"`
-	AzureEventHubConnectionString string        `hcl:"azure_event_hub_connection_string"`
-	EventHubName                  string        `hcl:"azure_event_hub_name"`
-	Output                        OutputConfig  `hcl:"output,block"`
-	Tables                        []TableConfig `hcl:"tables,block"`
+	DBType             string        `hcl:"db_type"`
+	DBConnectionString string        `hcl:"db_connection_string"`
+	Output             OutputConfig  `hcl:"output,block"`
+	Tables             []TableConfig `hcl:"tables,block"`
 }
 
+// CheckConfig validates the configuration based on the output type requirements
 func (c *Config) CheckConfig() {
-	if c.AzureEventHubConnectionString == "" {
-		log.Println("Error, AzureEventHubConnectionString was not found, exitting.")
-		os.Exit(0)
-	}
-
 	if c.DBConnectionString == "" {
-		log.Println("Error, DBConnectionString was not found, exitting.")
+		log.Println("Error, DBConnectionString was not found, exiting.")
 		os.Exit(0)
 	}
 
-	if c.EventHubName == "" {
-		log.Println("Error, EventHubName was not found, exitting.")
-		os.Exit(0)
+	// Validate based on Output Type requirements
+	switch strings.ToLower(c.Output.Type) {
+	case "eventHub", "servicebus":
+		if c.Output.ConnectionString == "" {
+			log.Fatalf("Error, %s connection string is required.", c.Output.Type)
+		}
+	case "console":
+		// Console output type doesn't need a connection string.
+		log.Println("Output set to console; no additional connection string required.")
+	default:
+		log.Fatalf("Error, unknown output type: %s", c.Output.Type)
 	}
 }
 
@@ -54,7 +61,7 @@ func (c *Config) CheckConfig() {
 func LoadConfig(filePath string) (*Config, error) {
 	var config Config
 
-	// Gen HCL config post text templating
+	// Generate HCL config post text templating
 	hcl, err := generateHCL(filePath)
 	if err != nil {
 		log.Fatal(err)
@@ -76,13 +83,12 @@ func (t *TableConfig) GetMaxPollInterval() (time.Duration, error) {
 	return time.ParseDuration(t.MaxPollInterval)
 }
 
-// generateHCL Generates the an HCL config after processing the text templating
+// generateHCL Generates the HCL config after processing the text templating
 func generateHCL(filePath string) (hcl string, err error) {
-
-	//Get the Sprig function map.
+	// Get the Sprig function map
 	fmap := sprig.TxtFuncMap()
 
-	// Define template that *.hcl and *.tpl files in current folder
+	// Define template for *.hcl and *.tpl files in the current folder
 	// Ensure the Sprig functions are loaded for processing templates
 	t := template.Must(template.New("test").
 		Funcs(fmap).
@@ -98,9 +104,8 @@ func generateHCL(filePath string) (hcl string, err error) {
 	return buf.String(), nil
 }
 
-// processHCL returns a WIRE config object based on the provided config file
+// processHCL returns a config object based on the provided config file
 func processHCL(configHCL string, filePath string) (config Config) {
-
 	// Parse HCL config starting from position 0
 	src := []byte(configHCL)
 	pos := hcl.Pos{Line: 0, Column: 0, Byte: 0}
