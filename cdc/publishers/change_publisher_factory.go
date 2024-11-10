@@ -2,11 +2,11 @@ package publishers
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 
 	"github.com/katasec/dstream/config"
+	queues "github.com/katasec/dstream/queues"
 )
 
 // ChangePublisherFactory is responsible for creating ChangePublisher instances based on config.
@@ -64,7 +64,7 @@ func (f *ChangePublisherFactory) Create(tableName string) (ChangePublisher, erro
 		if f.config.Output.ConnectionString == "" {
 			return nil, errors.New("ServiceBus connection string is required")
 		}
-		p, err := NewServiceBusPublisher(f.config.Output.ConnectionString, GetServiceBusQueueName(tableName))
+		p, err := NewServiceBusPublisher(f.config.Output.ConnectionString, queues.GetServiceBusQueueName(f.config.DBConnectionString, tableName))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -75,9 +75,4 @@ func (f *ChangePublisherFactory) Create(tableName string) (ChangePublisher, erro
 		log.Println("Creating Console publisher...")
 		return NewConsolePublisher(), nil
 	}
-}
-
-func GetServiceBusQueueName(tableName string) string {
-	tableName = strings.ToLower(tableName)
-	return fmt.Sprintf("%s-events", tableName)
 }
