@@ -155,18 +155,11 @@ func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]i
 		case 1:
 			operationType = "Delete"
 		default:
-			// Skip any unknown operation types
-			continue
+			continue // Skip any unknown operation types
 		}
 
-		// Capture relevant data including the table name, operation ID, and operation type
-		data := map[string]interface{}{
-			"TableName":     monitor.tableName,
-			"LSN":           hex.EncodeToString(lsn),
-			"OperationID":   operation,     // Original operation ID
-			"OperationType": operationType, // Descriptive operation type
-		}
-
+		// Organize metadata and data separately in the output
+		data := make(map[string]interface{})
 		for i, colName := range monitor.columns {
 			if colValue, ok := columnData[i+2].(*sql.NullString); ok && colValue.Valid {
 				data[colName] = colValue.String
@@ -175,7 +168,17 @@ func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]i
 			}
 		}
 
-		changes = append(changes, data)
+		change := map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"TableName":     monitor.tableName,
+				"LSN":           hex.EncodeToString(lsn),
+				"OperationID":   operation,
+				"OperationType": operationType,
+			},
+			"data": data,
+		}
+
+		changes = append(changes, change)
 		latestLSN = lsn
 	}
 

@@ -8,35 +8,46 @@ import (
 	"log"
 )
 
+// Default checkpoint table name
+const defaultCheckpointTableName = "cdc_offsets"
+
 // CheckpointManager manages checkpoint (LSN) persistence
 type CheckpointManager struct {
-	dbConn    *sql.DB
-	tableName string
+	dbConn          *sql.DB
+	tableName       string
+	checkpointTable string
 }
 
 // NewCheckpointManager initializes a new CheckpointManager
-func NewCheckpointManager(dbConn *sql.DB, tableName string) *CheckpointManager {
+func NewCheckpointManager(dbConn *sql.DB, tableName string, checkpointTableName ...string) *CheckpointManager {
+	// Use provided checkpoint table name if supplied; otherwise, use default
+	cpTable := defaultCheckpointTableName
+	if len(checkpointTableName) > 0 && checkpointTableName[0] != "" {
+		cpTable = checkpointTableName[0]
+	}
+
 	return &CheckpointManager{
-		dbConn:    dbConn,
-		tableName: tableName,
+		dbConn:          dbConn,
+		tableName:       tableName,
+		checkpointTable: cpTable,
 	}
 }
 
 // InitializeCheckpointTable creates the checkpoint table if it does not exist
 func (c *CheckpointManager) InitializeCheckpointTable() error {
-	query := `
-    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'cdc_offsets')
+	query := fmt.Sprintf(`
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '%s')
     BEGIN
-        CREATE TABLE cdc_offsets (
+        CREATE TABLE %s (
             table_name NVARCHAR(255) PRIMARY KEY,
             last_lsn VARBINARY(10),
             updated_at DATETIME DEFAULT GETDATE()
         );
-    END`
+    END`, c.checkpointTable, c.checkpointTable)
 
 	_, err := c.dbConn.Exec(query)
 	if err != nil {
-		return fmt.Errorf("failed to create cdc_offsets table: %w", err)
+		return fmt.Errorf("failed to create %s table: %w", c.checkpointTable, err)
 	}
 
 	log.Println("Initialized checkpoints table.")
@@ -46,7 +57,7 @@ func (c *CheckpointManager) InitializeCheckpointTable() error {
 // LoadLastLSN retrieves the last known LSN for the specified table
 func (c *CheckpointManager) LoadLastLSN(defaultStartLSN string) ([]byte, error) {
 	var lastLSN []byte
-	query := "SELECT last_lsn FROM cdc_offsets WHERE table_name = @tableName"
+	query := fmt.Sprintf("SELECT last_lsn FROM %s WHERE table_name = @tableName", c.checkpointTable)
 	err := c.dbConn.QueryRow(query, sql.Named("tableName", c.tableName)).Scan(&lastLSN)
 	if err == sql.ErrNoRows {
 		startLSNBytes, _ := hex.DecodeString(defaultStartLSN)
@@ -61,15 +72,15 @@ func (c *CheckpointManager) LoadLastLSN(defaultStartLSN string) ([]byte, error) 
 
 // SaveLastLSN updates the last known LSN for the specified table
 func (c *CheckpointManager) SaveLastLSN(newLSN []byte) error {
-	upsertQuery := `
-    MERGE INTO cdc_offsets AS target
+	upsertQuery := fmt.Sprintf(`
+    MERGE INTO %s AS target
     USING (VALUES (@tableName, @lastLSN, GETDATE())) AS source (table_name, last_lsn, updated_at)
     ON target.table_name = source.table_name
     WHEN MATCHED THEN 
         UPDATE SET last_lsn = source.last_lsn, updated_at = source.updated_at
     WHEN NOT MATCHED THEN
         INSERT (table_name, last_lsn, updated_at) 
-        VALUES (source.table_name, source.last_lsn, source.updated_at);`
+        VALUES (source.table_name, source.last_lsn, source.updated_at);`, c.checkpointTable)
 
 	_, err := c.dbConn.Exec(upsertQuery, sql.Named("tableName", c.tableName), sql.Named("lastLSN", newLSN))
 	if err != nil {
