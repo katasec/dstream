@@ -3,115 +3,107 @@ package publishers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 )
 
-// ServiceBusPublisher is an asynchronous publisher for sending messages to Azure Service Bus
 type ServiceBusPublisher struct {
-	client       *azservicebus.Client
-	tableName    string
-	messages     chan map[string]interface{}
-	batchSize    int
-	batchTimeout time.Duration
+	client     *azservicebus.Client
+	topicName  string
+	batchSize  int
+	batchQueue chan map[string]interface{}
 }
 
-// NewServiceBusPublisher creates a new ServiceBusPublisher with the provided connection string and topic/queue name
-func NewServiceBusPublisher(connectionString, tableName string) (*ServiceBusPublisher, error) {
+// NewServiceBusPublisher creates a new ServiceBusPublisher with the provided connection string and topic name
+func NewServiceBusPublisher(connectionString, topicName string) (*ServiceBusPublisher, error) {
 	client, err := azservicebus.NewClientFromConnectionString(connectionString, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create Service Bus client: %w", err)
 	}
 
-	// Initialize the publisher with a buffered channel and batch settings
 	publisher := &ServiceBusPublisher{
-		client:       client,
-		tableName:    tableName,
-		messages:     make(chan map[string]interface{}, 100), // Buffer size of 100; adjust as needed
-		batchSize:    10,                                     // Max number of messages per batch
-		batchTimeout: 10 * time.Second,                       // Max wait time for batching
+		client:     client,
+		topicName:  topicName,
+		batchSize:  10,                                     // Batch size for messages to send
+		batchQueue: make(chan map[string]interface{}, 100), // Buffered channel
 	}
 
-	// Start the background goroutine to process messages
 	go publisher.processMessages()
 
 	return publisher, nil
 }
 
-// PublishChange queues a message to be sent to Azure Service Bus
-func (s *ServiceBusPublisher) PublishChange(data map[string]interface{}) {
-	select {
-	case s.messages <- data:
-		// Successfully queued message
-		log.Println("Queued message for asynchronous publishing.")
-	default:
-		// Channel is full; log or handle overflow
-		log.Println("Warning: message queue is full; dropping message")
-	}
+// PublishChange sends the change data to the batchQueue for processing
+func (s *ServiceBusPublisher) PublishChange(change map[string]interface{}) {
+	log.Println("Queuing message for Service Bus publishing...")
+	// Print message to console
+	prettyPrintJSON(change)
+
+	// Send the message to the channel to be processed in batches
+	s.batchQueue <- change
 }
 
-// processMessages runs as a background goroutine to send messages in batches
+// processMessages reads from batchQueue and sends messages in batches
 func (s *ServiceBusPublisher) processMessages() {
-	batch := make([]*azservicebus.Message, 0, s.batchSize)
-	timer := time.NewTimer(s.batchTimeout)
-	defer timer.Stop()
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	var batch []map[string]interface{}
 
 	for {
 		select {
-		case data := <-s.messages:
-			// Convert data to JSON
-			jsonData, err := json.MarshalIndent(data, "", "    ")
-			if err != nil {
-				log.Printf("Error formatting JSON data: %v", err)
-				continue
-			}
-
-			// Log the message to console as it’s being added to the batch
-			log.Printf("Console Output - Message:\n%s", string(jsonData))
-
-			// Add message to batch
-			message := &azservicebus.Message{Body: jsonData}
-			batch = append(batch, message)
-
-			// Send batch if it reaches the batch size limit
+		case change := <-s.batchQueue:
+			batch = append(batch, change)
 			if len(batch) >= s.batchSize {
 				s.sendBatch(batch)
-				batch = batch[:0] // Reset batch
-				timer.Reset(s.batchTimeout)
+				batch = nil
 			}
-
-		case <-timer.C:
-			// Send any remaining messages in the batch if timeout expires
+		case <-ticker.C:
 			if len(batch) > 0 {
 				s.sendBatch(batch)
-				batch = batch[:0] // Reset batch
+				batch = nil
 			}
-			// Reset the timer
-			timer.Reset(s.batchTimeout)
 		}
 	}
 }
 
-// sendBatch sends a batch of messages to the Service Bus
-func (s *ServiceBusPublisher) sendBatch(batch []*azservicebus.Message) {
-	sender, err := s.client.NewSender(s.tableName, nil)
+// sendBatch sends a batch of messages to the Service Bus topic
+func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
+	sender, err := s.client.NewSender(s.topicName, nil)
 	if err != nil {
 		log.Printf("Failed to create Service Bus sender: %v", err)
 		return
 	}
 	defer sender.Close(context.Background())
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	for _, change := range batch {
+		jsonData, err := json.Marshal(change)
+		if err != nil {
+			log.Printf("Error formatting JSON data: %v", err)
+			continue
+		}
 
-	// Send each message in the batch
-	for _, message := range batch {
+		message := &azservicebus.Message{Body: jsonData}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
 		if err := sender.SendMessage(ctx, message, nil); err != nil {
 			log.Printf("Failed to send message to Service Bus: %v", err)
-		} else {
-			log.Println("Sent message to Service Bus.")
+			continue
 		}
+		log.Printf("Sent message to Service Bus: %s", jsonData)
 	}
+}
+
+// prettyPrintJSON prints JSON in an indented format to the console
+func prettyPrintJSON(data map[string]interface{}) {
+	jsonData, err := json.MarshalIndent(data, "", "    ")
+	if err != nil {
+		log.Printf("Error printing JSON: %v", err)
+		return
+	}
+	fmt.Println("Message Data:\n", string(jsonData))
 }
