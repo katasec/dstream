@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Masterminds/sprig"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
@@ -31,35 +32,71 @@ type OutputConfig struct {
 	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
 }
 
+// LockConfig represents the configuration for distributed locking
+type LockConfig struct {
+	Type             string `hcl:"type"`                   // Specifies the lock provider type (e.g., "azure_blob")
+	ConnectionString string `hcl:"connection_string,attr"` // Connection string for the lock provider
+	ContainerName    string `hcl:"container_name"`         // Name of the container used for lock files
+}
+
 // Config holds the entire configuration as represented in the HCL file
 type Config struct {
 	DBType             string        `hcl:"db_type"`
 	DBConnectionString string        `hcl:"db_connection_string"`
 	Output             OutputConfig  `hcl:"output,block"`
+	Locks              LockConfig    `hcl:"locks,block"`
 	Tables             []TableConfig `hcl:"tables,block"`
 }
 
-// CheckConfig validates the configuration based on the output type requirements
+// CheckConfig validates the configuration based on the output type and lock type requirements
 func (c *Config) CheckConfig() {
 	if c.DBConnectionString == "" {
 		log.Println("Error, DBConnectionString was not found, exiting.")
 		os.Exit(0)
 	}
 
-	// Validate based on Output Type requirements
+	// Validate Output configuration
 	switch strings.ToLower(c.Output.Type) {
-	case "eventHub":
+	case "eventhub":
 		if c.Output.ConnectionString == "" {
 			log.Fatalf("Error, %s connection string is required.", c.Output.Type)
 		}
 	case "servicebus":
 		c.serviceBusConfigCheck()
 	case "console":
-		// Console output type doesn't need a connection string.
+		// Console output type doesn't need a connection string
 		log.Println("Output set to console; no additional connection string required.")
 	default:
 		log.Fatalf("Error, unknown output type: %s", c.Output.Type)
 	}
+
+	// Validate Lock configuration
+	switch strings.ToLower(c.Locks.Type) {
+	case "azure_blob":
+		c.validateBlobLockConfig()
+	default:
+		log.Fatalf("Error, unknown lock type: %s", c.Locks.Type)
+	}
+}
+
+// validateBlobLockConfig validates the Azure Blob configuration for locks
+func (c *Config) validateBlobLockConfig() {
+	if c.Locks.ConnectionString == "" {
+		log.Fatalf("Error, Azure Blob Storage connection string is required for locks.")
+	}
+
+	// Ensure the container exists
+	client, err := azblob.NewClientFromConnectionString(c.Locks.ConnectionString, nil)
+	if err != nil {
+		log.Fatalf("Failed to create Azure Blob client: %v", err)
+	}
+
+	_, err = client.CreateContainer(context.TODO(), c.Locks.ContainerName, nil)
+	if err != nil && !strings.Contains(err.Error(), "ContainerAlreadyExists") {
+		log.Fatalf("Failed to ensure Azure Blob container %s: %v", c.Locks.ContainerName, err)
+	}
+
+	log.Printf("Validated Azure Blob container for locks: %s", c.Locks.ContainerName)
 }
 
 // serviceBusConfigCheck validates the Service Bus configuration and ensures topics exist for each table
@@ -89,8 +126,8 @@ func (c *Config) serviceBusConfigCheck() {
 // createTopicIfNotExists checks if a topic exists and creates it if it doesn’t
 func createTopicIfNotExists(client *admin.Client, topicName string) error {
 	// Check if the topic exists
-	response0, err := client.GetTopic(context.TODO(), topicName, nil)
-	if err == nil && response0 != nil {
+	_, err := client.GetTopic(context.TODO(), topicName, nil)
+	if err == nil {
 		log.Printf("Topic %s already exists.\n", topicName)
 		return nil // Topic already exists
 	}
