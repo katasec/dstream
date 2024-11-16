@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"log"
 
 	"github.com/katasec/dstream/cdc"
@@ -11,7 +10,6 @@ import (
 
 type Server struct {
 	config *config.Config
-	db     *sql.DB
 }
 
 // NewServer initializes the server, loads the configuration, and connects to the database
@@ -24,25 +22,25 @@ func NewServer() *Server {
 
 	config.CheckConfig()
 
-	// Connect to the database
-	dbConn, err := db.Connect(config.DBConnectionString)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-
 	return &Server{
 		config: config,
-		db:     dbConn,
 	}
 }
 
 // Start initializes the TableMonitoringService and begins monitoring each table in the config
 func (s *Server) Start() {
+	// Connect to the database
+	dbConn, err := db.Connect(s.config.DBConnectionString)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer dbConn.Close()
+
 	// Create a new instance of TableMonitoringService
-	tableService := cdc.NewTableMonitoringService(s.db, s.config)
+	tableService := cdc.NewTableMonitoringService(dbConn, s.config)
 
 	// Start the TableMonitoringService
-	err := tableService.StartMonitoring()
+	err = tableService.StartMonitoring()
 	if err != nil {
 		log.Fatalf("Failed to start monitoring service: %v", err)
 	}

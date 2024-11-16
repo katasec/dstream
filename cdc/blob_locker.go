@@ -21,77 +21,90 @@ var (
 type BlobLocker struct {
 	client          *azblob.Client
 	container       string
-	blobName        string
 	lockTTL         time.Duration // Time-to-live for the lock
-	blobLeaseClient *lease.BlobClient
+	blockblobClient *blockblob.Client
 }
 
 // NewBlobLocker initializes a new BlobLocker
-func NewBlobLocker(connectionString, containerName, blobName string, lockTTL time.Duration) (*BlobLocker, error) {
-
+func NewBlobLocker(connectionString, containerName string, blobName string, lockTTL time.Duration) (*BlobLocker, error) {
 	// Create blob client
 	client, err := azblob.NewClientFromConnectionString(connectionString, nil)
-	handleError(err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Azure Blob client: %w", err)
+	}
 
 	// Ensure container exists
 	_, err = client.CreateContainer(context.TODO(), containerName, nil)
-	alreadyExists := strings.Contains(err.Error(), "The specified container already exists")
-	if err != nil && !alreadyExists {
-		handleError(fmt.Errorf("failed to create or check container: %w", err))
+	if err != nil && !strings.Contains(err.Error(), "The specified container already exists") {
+		return nil, fmt.Errorf("failed to create or check container: %w", err)
+	} else {
+		log.Printf("Container %s, exists", containerName)
 	}
 
-	// Ensure blob exists
-	blockblobClient, err := blockblob.NewClientFromConnectionString(connectionString, containerName, blobName, &blockblob.ClientOptions{})
-	handleError(err)
-	_, err = blockblobClient.UploadBuffer(context.TODO(), []byte{}, &blockblob.UploadBufferOptions{})
-	handleError(err)
+	// Create blockblob client
+	blockblobClient, err := blockblob.NewClientFromConnectionString(connectionString, containerName, blobName, nil)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 
-	// Create Lease client
-	blobLeaseClient, err := lease.NewBlobClient(blockblobClient, &lease.BlobClientOptions{})
-	handleError(err)
-
-	// lockTTL min value
-	if lockTTL < 60 {
-		lockTTL = 60
+	// Ensure lockTTL is above the minimum threshold
+	if lockTTL < time.Second*60 {
+		lockTTL = time.Second * 60
 	}
 
 	return &BlobLocker{
 		client:          client,
-		container:       defaultLockerContainerName,
-		blobName:        blobName,
+		container:       containerName,
 		lockTTL:         lockTTL,
-		blobLeaseClient: blobLeaseClient,
+		blockblobClient: blockblobClient,
 	}, nil
 }
 
-// AcquireLock tries to acquire a lock on the blob by taking a lease and returns the lease ID if successful
-func (bl *BlobLocker) AcquireLock(ctx context.Context) (string, error) {
+// AcquireLock tries to acquire a lock on the blob (lockName) by taking a lease and returns the lease ID if successful
+func (bl *BlobLocker) AcquireLock(ctx context.Context, lockName string) (string, error) {
 
-	resp, err := bl.blobLeaseClient.AcquireLease(ctx, int32(bl.lockTTL.Seconds()), nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to acquire lock for blob %s: %w", bl.blobName, err)
-	} else {
-		fmt.Println("lease acquired!")
+	// Ensure blob exists
+	_, err := bl.blockblobClient.UploadBuffer(context.TODO(), []byte{}, &blockblob.UploadBufferOptions{})
+	if err != nil && !strings.Contains(err.Error(), "BlobAlreadyExists") {
+		return "", fmt.Errorf("failed to create or check blob %s: %w", lockName, err)
 	}
 
-	log.Printf("Lock acquired for blob %s with lease ID: %s", bl.blobName, *resp.LeaseID)
+	// Create a lease client for the blob
+	blobLeaseClient, err := lease.NewBlobClient(bl.blockblobClient, &lease.BlobClientOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to create lease client for blob %s: %w", lockName, err)
+	}
+
+	// Attempt to acquire a lease
+	resp, err := blobLeaseClient.AcquireLease(ctx, int32(bl.lockTTL.Seconds()), nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to acquire lock for blob %s: %w", lockName, err)
+	}
+
+	log.Printf("Lock acquired for blob %s with lease ID: %s", lockName, *resp.LeaseID)
 	return *resp.LeaseID, nil
 }
 
-// ReleaseLock releases the lock associated with the provided lease ID
-func (bl *BlobLocker) ReleaseLock(ctx context.Context) error {
+// ReleaseLock releases the lock associated with the provided lease ID for the specified blob (lockName)
+func (bl *BlobLocker) ReleaseLock(ctx context.Context, lockName string) error {
+	// Create a block blob client for the lockName
+	blockblobClient, err := blockblob.NewClientFromConnectionString("", bl.container, lockName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create block blob client for %s: %w", lockName, err)
+	}
+
+	// Create a lease client for the blob
+	blobLeaseClient, err := lease.NewBlobClient(blockblobClient, &lease.BlobClientOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create lease client for blob %s: %w", lockName, err)
+	}
+
 	// Attempt to release the lease
-	_, err := bl.blobLeaseClient.ReleaseLease(ctx, nil)
+	_, err = blobLeaseClient.ReleaseLease(ctx, &lease.BlobReleaseOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to release lock for blob %s with: %w", bl.blobName, err)
+		return fmt.Errorf("failed to release lock for blob %s: %w", lockName, err)
 	}
 
-	log.Printf("Lock released for blob %s", bl.blobName)
+	log.Printf("Lock released for blob %s", lockName)
 	return nil
-}
-
-func handleError(err error) {
-	if err != nil {
-		log.Fatal(err.Error())
-	}
 }

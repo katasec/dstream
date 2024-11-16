@@ -7,9 +7,9 @@ import (
 
 // DistributedLocker defines an interface for a distributed locking mechanism.
 type DistributedLocker interface {
-	// AcquireLock tries to acquire a lock and returns a lease ID if successful.
-	AcquireLock(ctx context.Context) (string, error)
+	// AcquireLock tries to acquire a lock for the given lockName and returns a lease ID if successful.
+	AcquireLock(ctx context.Context, lockName string) (string, error)
 
-	// ReleaseLock releases the lock associated with the provided lease ID.
-	ReleaseLock(ctx context.Context, leaseID string) error
+	// ReleaseLock releases the lock associated with the provided lease ID for the given lockName.
+	ReleaseLock(ctx context.Context, lockName string) error
 }
