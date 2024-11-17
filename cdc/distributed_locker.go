@@ -12,4 +12,10 @@ type DistributedLocker interface {
 
 	// ReleaseLock releases the lock associated with the provided lease ID for the given lockName.
 	ReleaseLock(ctx context.Context, lockName string) error
+
+	// ReleaseLock releases the lock associated with the provided lease ID for the given lockName.
+	RenewLock(ctx context.Context, lockName string) error
+
+	// StartLockRenewal starts a background process to renew the lock periodically.
+	StartLockRenewal(ctx context.Context, lockName string)
 }

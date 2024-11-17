@@ -7,6 +7,10 @@ import (
 	"github.com/katasec/dstream/config"
 )
 
+var (
+	defaultLockTTL = 120 * time.Second
+)
+
 // LockerFactory creates instances of DistributedLocker based on the configuration
 type LockerFactory struct {
 	config *config.Config
@@ -25,7 +29,7 @@ func (f *LockerFactory) CreateLocker(lockName string) (DistributedLocker, error)
 			f.config.Locks.ConnectionString,
 			f.config.Locks.ContainerName,
 			lockName,
-			60*time.Second, // Default TTL for locks
+			defaultLockTTL, // Default TTL for locks
 		)
 	default:
 		return nil, fmt.Errorf("unsupported lock type: %s", f.config.Locks.Type)
