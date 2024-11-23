@@ -11,7 +11,8 @@ type DistributedLocker interface {
 	AcquireLock(ctx context.Context, lockName string) (string, error)
 
 	// ReleaseLock releases the lock associated with the provided lease ID for the given lockName.
-	ReleaseLock(ctx context.Context, lockName string) error
+	//ReleaseLock(ctx context.Context, lockName string) error
+	ReleaseLock(ctx context.Context, lockName string, leaseID string) error
 
 	// ReleaseLock releases the lock associated with the provided lease ID for the given lockName.
 	RenewLock(ctx context.Context, lockName string) error

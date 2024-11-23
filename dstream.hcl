@@ -12,7 +12,7 @@ output {
 
 # Lock configuration
 locks {
-    type = "azure_blob"  # Specifies the lock provider type
+    type = "azure_blob_db"  # Specifies the lock provider type
     connection_string = "{{ env "DSTREAM_BLOB_CONNECTION_STRING" }}"  # Connection string to Azure Blob Storage
     container_name = "locks"  # The name of the container used for lock files
 }

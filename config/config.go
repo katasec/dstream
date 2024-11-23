@@ -72,7 +72,7 @@ func (c *Config) CheckConfig() {
 
 	// Validate Lock configuration
 	switch strings.ToLower(c.Locks.Type) {
-	case "azure_blob":
+	case "azure_blob_db":
 		c.validateBlobLockConfig()
 	default:
 		log.Fatalf("Error, unknown lock type: %s", c.Locks.Type)
