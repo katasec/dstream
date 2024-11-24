@@ -80,6 +80,12 @@ func (s *Server) Start() {
 		}
 	}
 
+	// Log monitored tables:
+	log.Println("The following tables will be monitored:")
+	for _, table := range tablesToMonitor {
+		log.Println("Table Name:", table.Name)
+	}
+
 	// Create table monitoring service for those tables
 	tableService := cdc.NewTableMonitoringService(s.dbConn, s.config, tablesToMonitor)
 

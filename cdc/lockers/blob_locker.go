@@ -163,14 +163,14 @@ func (bl *BlobLocker) GetLockedTables() []string {
 			leaseStatus := resp.LeaseStatus
 			leaseState := resp.LeaseState
 
-			fmt.Printf("  Lease Status: %s\n", *leaseStatus)
-			fmt.Printf("  Lease State: %s\n", *leaseState)
+			log.Printf("  Lease Status: %s\n", *leaseStatus)
+			log.Printf("  Lease State: %s\n", *leaseState)
 
 			if *leaseStatus == "locked" && *leaseState == "leased" {
-				fmt.Printf("  -> The blob is leased.\n")
+				log.Printf("  -> The blob is leased.\n")
 				lockedTables = append(lockedTables, blobName)
 			} else {
-				fmt.Printf("  -> The blob is not leased.\n")
+				log.Printf("  -> The blob is not leased.\n")
 			}
 		}
 	}
