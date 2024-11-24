@@ -19,6 +19,25 @@ import (
 	queues "github.com/katasec/dstream/azureservicebus"
 )
 
+// Config holds the entire configuration as represented in the HCL file
+type Config struct {
+	DBType             string        `hcl:"db_type"`
+	DBConnectionString string        `hcl:"db_connection_string"`
+	Output             OutputConfig  `hcl:"output,block"`
+	Locks              LockConfig    `hcl:"locks,block"`
+	Tables             []TableConfig `hcl:"tables,block"`
+}
+
+func NewConfig() *Config {
+	// Load config file
+	config, err := LoadConfig("dstream.hcl")
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
+
+	return config
+}
+
 // TableConfig represents individual table configurations in the HCL file
 type TableConfig struct {
 	Name            string `hcl:"name"`
@@ -37,15 +56,6 @@ type LockConfig struct {
 	Type             string `hcl:"type"`                   // Specifies the lock provider type (e.g., "azure_blob")
 	ConnectionString string `hcl:"connection_string,attr"` // Connection string for the lock provider
 	ContainerName    string `hcl:"container_name"`         // Name of the container used for lock files
-}
-
-// Config holds the entire configuration as represented in the HCL file
-type Config struct {
-	DBType             string        `hcl:"db_type"`
-	DBConnectionString string        `hcl:"db_connection_string"`
-	Output             OutputConfig  `hcl:"output,block"`
-	Locks              LockConfig    `hcl:"locks,block"`
-	Tables             []TableConfig `hcl:"tables,block"`
 }
 
 // CheckConfig validates the configuration based on the output type and lock type requirements
@@ -73,6 +83,8 @@ func (c *Config) CheckConfig() {
 	// Validate Lock configuration
 	switch strings.ToLower(c.Locks.Type) {
 	case "azure_blob_db":
+		c.validateBlobLockConfig()
+	case "azure_blob":
 		c.validateBlobLockConfig()
 	default:
 		log.Fatalf("Error, unknown lock type: %s", c.Locks.Type)

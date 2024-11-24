@@ -10,6 +10,7 @@ import (
 	"time"
 
 	publishers "github.com/katasec/dstream/cdc/publishers"
+	"github.com/katasec/dstream/cdc/sqlserver"
 )
 
 // SQLServerMonitor manages SQL Server CDC monitoring for a specific table
@@ -20,14 +21,14 @@ type SQLServerMonitor struct {
 	maxPollInterval time.Duration
 	lastLSNs        map[string][]byte
 	lsnMutex        sync.Mutex
-	checkpointMgr   *CheckpointManager
+	checkpointMgr   *sqlserver.CheckpointManager
 	publisher       publishers.ChangePublisher
 	columns         []string // Cached column names
 }
 
 // NewSQLServerMonitor initializes a new SQLServerMonitor for a specific table
 func NewSQLServerMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration, publisher publishers.ChangePublisher) *SQLServerMonitor {
-	checkpointMgr := NewCheckpointManager(dbConn, tableName)
+	checkpointMgr := sqlserver.NewCheckpointManager(dbConn, tableName)
 
 	// Fetch column names once and store them in the struct
 	columns, err := fetchColumnNames(dbConn, tableName)

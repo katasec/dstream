@@ -1,5 +1,5 @@
 // distributed_locker.go
-package cdc
+package lockers
 
 import (
 	"context"

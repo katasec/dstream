@@ -3,11 +3,11 @@ package cdc
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"sync"
 	"time"
 
+	"github.com/katasec/dstream/cdc/lockers"
 	"github.com/katasec/dstream/cdc/publishers"
 	"github.com/katasec/dstream/config"
 )
@@ -15,13 +15,14 @@ import (
 // TableMonitoringService manages monitoring for each table in the config.
 
 type TableMonitoringService struct {
-	db                 *sql.DB
-	config             *config.Config
-	lockerFactory      *LockerFactory
-	leaseIDs           map[string]string             // Map to store lease IDs for each lock
-	renewalCancelFuncs map[string]context.CancelFunc // Map to store cancel functions for renewal goroutines
-	mu                 sync.Mutex                    // Mutex to synchronize access to maps
-	leaseDB            *LeaseDBManager
+	db            *sql.DB
+	config        *config.Config
+	lockerFactory *lockers.LockerFactory
+	leaseIDs      map[string]string // Map to store lease IDs for each lock
+	// renewalCancelFuncs map[string]context.CancelFunc // Map to store cancel functions for renewal goroutines
+	// mu           sync.Mutex // Mutex to synchronize access to maps
+	leaseDB      *lockers.LeaseDBManager
+	tableLockers map[string]lockers.DistributedLocker
 }
 
 // NewTableMonitoringService initializes a new TableMonitoringService.
@@ -37,18 +38,18 @@ type TableMonitoringService struct {
 
 func NewTableMonitoringService(db *sql.DB, config *config.Config) *TableMonitoringService {
 	// Initialize the LeaseDBManager
-	leaseDB := NewLeaseDBManager(db)
+	leaseDB := lockers.NewLeaseDBManager(db)
 
 	return &TableMonitoringService{
 		db:            db,
 		config:        config,
-		lockerFactory: NewLockerFactory(config, leaseDB), // Pass leaseDB to NewLockerFactory
-		leaseDB:       leaseDB,                           // Assign leaseDB to the TableMonitoringService
+		lockerFactory: lockers.NewLockerFactory(config, leaseDB), // Pass leaseDB to NewLockerFactory
+		leaseDB:       leaseDB,                                   // Assign leaseDB to the TableMonitoringService
 		leaseIDs:      make(map[string]string),
+		tableLockers:  make(map[string]lockers.DistributedLocker),
 	}
 }
 
-// StartMonitoring initializes and starts monitoring for each table in the config.
 // StartMonitoring initializes and starts monitoring for each table in the config.
 func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 	var wg sync.WaitGroup // WaitGroup to ensure goroutines complete
@@ -56,16 +57,13 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 	// Initialize ChangePublisherFactory
 	publisherFactory := publishers.NewChangePublisherFactory(t.config)
 
-	// Get tables that are not locked
-	unlockedTables := t.GetUnlockedTables()
-
-	for _, tableConfig := range unlockedTables {
+	for _, tableConfig := range t.config.Tables {
 		wg.Add(1) // Increment the WaitGroup counter for each table
 
 		pollInterval, _ := tableConfig.GetPollInterval()
 		maxPollInterval, _ := tableConfig.GetMaxPollInterval()
 
-		// Create the appropriate publisher for the table
+		// Create a appropriate publisher per table
 		publisher, err := publisherFactory.Create(tableConfig.Name)
 		if err != nil {
 			log.Printf("Error creating publisher for table %s: %v", tableConfig.Name, err)
@@ -76,51 +74,18 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 		// Define the lock name for the table
 		lockName := tableConfig.Name + ".lock"
 
-		// Check if a lease ID already exists in the database
-		existingLeaseID, err := t.leaseDB.GetLeaseID(lockName)
-		if err != nil {
-			log.Printf("Failed to retrieve lease ID for table %s: %v", tableConfig.Name, err)
-			wg.Done()
-			continue
-		}
-		if existingLeaseID != "" {
-			log.Printf("Skipping table %s as it is already locked (Lease ID: %s).", tableConfig.Name, existingLeaseID)
-			wg.Done()
-			continue
-		}
-
-		// Create a locker for the table using the LockerFactory
-		locker, err := t.lockerFactory.CreateLocker(lockName)
+		// Create a tableLocker for the table using the LockerFactory
+		// Add to lockers list
+		tableLocker, err := t.lockerFactory.CreateLocker(lockName)
 		if err != nil {
 			log.Printf("Failed to create locker for table %s: %v", tableConfig.Name, err)
 			wg.Done()
 			continue
+		} else {
+			log.Println("Saving table locker for:", lockName)
+			t.tableLockers[lockName] = tableLocker
 		}
-
-		// Acquire the lock
-		leaseID, err := locker.AcquireLock(ctx, lockName)
-		if err != nil {
-			log.Printf("Failed to acquire lock for table %s: %v", tableConfig.Name, err)
-			wg.Done()
-			continue
-		}
-		if leaseID == "" {
-			log.Printf("Skipping table %s as it is already locked.", tableConfig.Name)
-			wg.Done()
-			continue
-		}
-
-		// Store the lease ID in memory and persist it in the database
-		t.mu.Lock()
-		t.leaseIDs[lockName] = leaseID
-		t.mu.Unlock()
-
-		if err := t.leaseDB.StoreLeaseID(lockName, leaseID); err != nil {
-			log.Printf("Failed to persist lease ID for table %s: %v", tableConfig.Name, err)
-			wg.Done()
-			continue
-		}
-
+		tableLocker.AcquireLock(ctx, lockName)
 		// Initialize SQLServerMonitor for each table with poll intervals and the correct publisher.
 		monitor := NewSQLServerMonitor(
 			t.db,
@@ -130,20 +95,8 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 			publisher,
 		)
 
-		// Start monitoring each table as a separate goroutine
-		go func(monitor *SQLServerMonitor, tableConfig config.TableConfig, locker DistributedLocker) {
-			defer wg.Done() // Mark goroutine as done when it completes
-
-			// Start lock renewal
-			locker.StartLockRenewal(ctx, lockName)
-
-			log.Printf("Starting monitor for table: %s", tableConfig.Name)
-			if err := monitor.MonitorTable(); err != nil {
-				log.Printf("Error monitoring table %s: %v", tableConfig.Name, err)
-			} else {
-				log.Printf("Monitoring completed for table %s", tableConfig.Name)
-			}
-		}(monitor, tableConfig, locker)
+		// Start monitoring each table as a separate goroutine using the helper function
+		go t.monitorTable(ctx, &wg, monitor, tableConfig, lockName, tableLocker)
 
 		// Stagger the start of each monitor by a short interval
 		time.Sleep(500 * time.Millisecond)
@@ -155,69 +108,33 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 	return nil
 }
 
-// GetUnlockedTables retrieves tables that are not locked
-func (t *TableMonitoringService) GetUnlockedTables() []config.TableConfig {
-	var unlockedTables []config.TableConfig
-	ctx := context.TODO()
+func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
+	for _, table := range t.config.Tables {
+		log.Printf("Attempting to release lock for:%s \n", table.Name)
+		lockName := table.Name + ".lock"
+		myLocker := t.tableLockers[lockName]
 
-	for _, tableConfig := range t.config.Tables {
-		lockName := tableConfig.Name + ".lock"
-
-		// Use LockerFactory to create a locker for each table
-		locker, err := t.lockerFactory.CreateLocker(lockName)
-		if err != nil {
-			log.Printf("Failed to create locker for table %s: %v", tableConfig.Name, err)
-			continue
-		}
-
-		// Try to acquire a lock temporarily to check if the table is locked
-		leaseID, err := locker.AcquireLock(ctx, lockName)
-		if err != nil {
-			fmt.Printf("Could not acquire lock for %s: %s\n", tableConfig.Name, err.Error())
-			continue
-		}
-
-		// If lock is acquired, release it immediately
-		if err := locker.ReleaseLock(ctx, lockName, leaseID); err != nil {
-			log.Printf("Failed to release temporary lock for table %s: %v", tableConfig.Name, err)
+		if myLocker != nil {
+			err := myLocker.ReleaseLock(ctx, table.Name, "")
+			if err != nil {
+				log.Println(err.Error())
+			}
 		} else {
-			unlockedTables = append(unlockedTables, tableConfig)
+			log.Printf("No lock found for %s\n", table.Name)
 		}
 	}
-
-	log.Printf("Unlocked tables: %v", unlockedTables)
-	return unlockedTables
 }
 
-func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+func (t *TableMonitoringService) monitorTable(ctx context.Context, wg *sync.WaitGroup, monitor *SQLServerMonitor, tableConfig config.TableConfig, lockName string, locker lockers.DistributedLocker) {
+	defer wg.Done() // Mark goroutine as done when it completes
 
-	for lockName, leaseID := range t.leaseIDs {
-		log.Printf("Stopping lock renewal for %s", lockName)
-
-		// Stop the renewal context for this lock
-		if cancelFunc, exists := t.renewalCancelFuncs[lockName]; exists {
-			cancelFunc() // Stop the renewal goroutine
-			delete(t.renewalCancelFuncs, lockName)
-		}
-
-		// Create a locker for the table using the LockerFactory
-		locker, err := t.lockerFactory.CreateLocker(lockName)
-		if err != nil {
-			log.Printf("Failed to create locker for lock %s during shutdown: %v", lockName, err)
-			continue
-		}
-
-		// Attempt to release the lock using the correct lease ID
-		if err := locker.ReleaseLock(ctx, lockName, leaseID); err != nil {
-			log.Printf("Failed to release lock for %s: %v", lockName, err)
-		} else {
-			log.Printf("Lock released for %s", lockName)
-		}
+	log.Printf("Starting monitor for table: %s", tableConfig.Name)
+	if err := monitor.MonitorTable(); err != nil {
+		log.Printf("Error monitoring table %s: %v", tableConfig.Name, err)
+	} else {
+		log.Printf("Monitoring completed for table %s", tableConfig.Name)
 	}
 
-	// Clear the lease IDs and cancellation functions after releasing all locks
-	t.leaseIDs = map[string]string{}
-	t.renewalCancelFuncs = map[string]context.CancelFunc{}
+	// Start lock renewal
+	locker.StartLockRenewal(ctx, lockName)
 }

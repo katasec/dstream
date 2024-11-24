@@ -1,4 +1,4 @@
-package cdc
+package lockers
 
 import (
 	"database/sql"

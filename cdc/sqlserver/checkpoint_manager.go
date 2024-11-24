@@ -1,5 +1,5 @@
 // checkpoint_manager.go
-package cdc
+package sqlserver
 
 import (
 	"database/sql"

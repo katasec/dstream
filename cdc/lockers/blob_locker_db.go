@@ -1,4 +1,4 @@
-package cdc
+package lockers
 
 import (
 	"context"
@@ -18,7 +18,6 @@ type BlobLockerDb struct {
 	lockTTL         time.Duration
 	blockblobClient *blockblob.Client
 	blobLeaseClient *lease.BlobClient
-	leaseID         string
 	leaseDB         *LeaseDBManager
 }
 

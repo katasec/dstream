@@ -1,8 +1,10 @@
-package cdc
+package lockers
 
 import (
 	"fmt"
 	"time"
+
+	// "github.com/katasec/dstream/cdc/lockers"
 
 	"github.com/katasec/dstream/config"
 )
@@ -35,6 +37,13 @@ func (f *LockerFactory) CreateLocker(lockName string) (DistributedLocker, error)
 			lockName,
 			defaultLockTTL, // Default TTL for locks
 			f.leaseDB,
+		)
+	case "azure_blob":
+		return NewBlobLocker(
+			f.config.Locks.ConnectionString,
+			f.config.Locks.ContainerName,
+			lockName,
+			defaultLockTTL, // Default TTL for locks
 		)
 	default:
 		return nil, fmt.Errorf("unsupported lock type: %s", f.config.Locks.Type)

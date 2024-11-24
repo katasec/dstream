@@ -9,15 +9,16 @@ import (
 	"syscall"
 
 	"github.com/katasec/dstream/cdc"
+	"github.com/katasec/dstream/cdc/lockers"
 	"github.com/katasec/dstream/config"
 	"github.com/katasec/dstream/db"
 )
 
 type Server struct {
 	config        *config.Config
-	lockerFactory *cdc.LockerFactory
-	cancelFunc    context.CancelFunc
-	wg            *sync.WaitGroup
+	lockerFactory *lockers.LockerFactory
+	// cancelFunc    context.CancelFunc
+	wg *sync.WaitGroup
 }
 
 // NewServer initializes the server, loads the configuration, and creates the locker factory
@@ -37,10 +38,10 @@ func NewServer() *Server {
 	}
 
 	// Initialize LeaseDBManager
-	leaseDB := cdc.NewLeaseDBManager(dbConn)
+	leaseDB := lockers.NewLeaseDBManager(dbConn)
 
 	// Initialize LockerFactory with config and LeaseDBManager
-	lockerFactory := cdc.NewLockerFactory(config, leaseDB)
+	lockerFactory := lockers.NewLockerFactory(config, leaseDB)
 
 	return &Server{
 		config:        config,
@@ -83,7 +84,7 @@ func (s *Server) handleShutdown(ctx context.Context, cancel context.CancelFunc, 
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
 	<-signalChan // Wait for a signal
-	log.Println("Shutting down gracefully...")
+	log.Println("Ctrl-C detected, shutting down gracefully...")
 
 	// Cancel the context to stop all monitoring goroutines
 	cancel()
