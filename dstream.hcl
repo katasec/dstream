@@ -2,12 +2,19 @@
 db_type = "sqlserver"
 
 # Connection string for the database
-db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING"  }}"
+db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
 
 # Output configuration
 output {
     type = "servicebus"  # Possible values: "console", "eventhub", "servicebus"
-    connection_string = "{{ env "DSTREAM_PUBLISHER_CONNECTION_STRING"  }}"  # Used if type is "eventhub" or "servicebus"
+    connection_string = "{{ env "DSTREAM_PUBLISHER_CONNECTION_STRING" }}"  # Used if type is "eventhub" or "servicebus"
+}
+
+# Lock configuration
+locks {
+    type = "azure_blob"  # Specifies the lock provider type
+    connection_string = "{{ env "DSTREAM_BLOB_CONNECTION_STRING" }}"  # Connection string to Azure Blob Storage
+    container_name = "locks"  # The name of the container used for lock files
 }
 
 # Table configurations with polling intervals
