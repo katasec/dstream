@@ -19,4 +19,7 @@ type DistributedLocker interface {
 
 	// StartLockRenewal starts a background process to renew the lock periodically.
 	StartLockRenewal(ctx context.Context, lockName string)
+
+	// Gets Locked Tables
+	GetLockedTables() []string
 }

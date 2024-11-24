@@ -138,3 +138,8 @@ func (bl *BlobLockerDb) ReleaseLock(ctx context.Context, lockName string, leaseI
 	log.Printf("Lock released for blob %s with Lease ID: %s", lockName, leaseID)
 	return nil
 }
+
+func (bl *BlobLockerDb) GetLockedTables() []string {
+	tables := []string{}
+	return tables
+}

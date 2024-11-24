@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	// "github.com/katasec/dstream/cdc/lockers"
-
 	"github.com/katasec/dstream/config"
 )
 
@@ -45,6 +43,20 @@ func (f *LockerFactory) CreateLocker(lockName string) (DistributedLocker, error)
 			lockName,
 			defaultLockTTL, // Default TTL for locks
 		)
+	default:
+		return nil, fmt.Errorf("unsupported lock type: %s", f.config.Locks.Type)
+	}
+}
+
+// GetUnlockedTable Gets locked tables by the specified locked
+func (f *LockerFactory) GetLockedTables() ([]string, error) {
+	switch f.config.Locks.Type {
+	case "azure_blob_db":
+		lockedtables := []string{}
+		return lockedtables, nil
+	case "azure_blob":
+		lockedtables := GetBlobLockerLockedTables(f.config)
+		return lockedtables, nil
 	default:
 		return nil, fmt.Errorf("unsupported lock type: %s", f.config.Locks.Type)
 	}

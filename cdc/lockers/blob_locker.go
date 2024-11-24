@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/lease"
+	"github.com/katasec/dstream/config"
 )
 
 type BlobLocker struct {
@@ -24,7 +26,7 @@ type BlobLocker struct {
 
 func NewBlobLocker(connectionString, containerName, lockName string, lockTTL time.Duration) (*BlobLocker, error) {
 
-	// Create azblob azblobClient and create container
+	// Create azblobClient and create container
 	azblobClient, err := azblob.NewClientFromConnectionString(connectionString, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure Blob client: %w", err)
@@ -36,7 +38,6 @@ func NewBlobLocker(connectionString, containerName, lockName string, lockTTL tim
 
 	// Create block blob client and upload empty blob
 	blockblobClient, err := blockblob.NewClientFromConnectionString(connectionString, containerName, lockName, nil)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to create block blob client: %w", err)
 	}
@@ -125,4 +126,107 @@ func (bl *BlobLocker) StartLockRenewal(ctx context.Context, lockName string) {
 			}
 		}
 	}()
+}
+
+// GetLockedTables Iterates through all the blobs in the container to find locked tables
+func (bl *BlobLocker) GetLockedTables() []string {
+	lockedTables := []string{}
+	config := config.NewConfig()
+
+	// Create blob pager
+	containerName := config.Locks.ContainerName
+	containerClient := bl.azblobClient.ServiceClient().NewContainerClient(containerName)
+	pager := containerClient.NewListBlobsFlatPager(nil)
+
+	// User pager to iterate through blob store pages
+	for pager.More() {
+		page, err := pager.NextPage(context.TODO())
+		if err != nil {
+			log.Fatalf("Failed to list blobs: %v", err)
+		}
+		// for each page, iterate through blob items
+		for _, blob := range page.Segment.BlobItems {
+			blobName := *blob.Name
+			log.Printf("Blob: %s\n", blobName)
+
+			// Get the BlobClient for the current blob
+			blobClient := containerClient.NewBlobClient(blobName)
+
+			// Fetch the blob's properties
+			resp, err := blobClient.GetProperties(context.TODO(), nil)
+			if err != nil {
+				log.Printf("Failed to get properties for blob %s: %v\n", blobName, err)
+				continue
+			}
+
+			// Check the lease status and state
+			leaseStatus := resp.LeaseStatus
+			leaseState := resp.LeaseState
+
+			fmt.Printf("  Lease Status: %s\n", *leaseStatus)
+			fmt.Printf("  Lease State: %s\n", *leaseState)
+
+			if *leaseStatus == "locked" && *leaseState == "leased" {
+				fmt.Printf("  -> The blob is leased.\n")
+				lockedTables = append(lockedTables, blobName)
+			} else {
+				fmt.Printf("  -> The blob is not leased.\n")
+			}
+		}
+	}
+
+	return lockedTables
+}
+
+func GetBlobLockerLockedTables(config *config.Config) []string {
+	lockedTables := []string{}
+	// Create azblobClient and create container
+	azblobClient, err := azblob.NewClientFromConnectionString(config.Locks.ConnectionString, nil)
+	if err != nil {
+		log.Println("failed to create Azure Blob client: %w, exitting.", err)
+		os.Exit(1)
+	}
+
+	// Create blob pager
+	containerClient := azblobClient.ServiceClient().NewContainerClient(config.Locks.ContainerName)
+	pager := containerClient.NewListBlobsFlatPager(nil)
+
+	// User pager to iterate through blob store pages
+	for pager.More() {
+		page, err := pager.NextPage(context.TODO())
+		if err != nil {
+			log.Fatalf("Failed to list blobs: %v", err)
+		}
+		// for each page, iterate through blob items
+		for _, blob := range page.Segment.BlobItems {
+			blobName := *blob.Name
+			log.Printf("Blob: %s\n", blobName)
+
+			// Get the BlobClient for the current blob
+			blobClient := containerClient.NewBlobClient(blobName)
+
+			// Fetch the blob's properties
+			resp, err := blobClient.GetProperties(context.TODO(), nil)
+			if err != nil {
+				log.Printf("Failed to get properties for blob %s: %v\n", blobName, err)
+				continue
+			}
+
+			// Check the lease status and state
+			leaseStatus := resp.LeaseStatus
+			leaseState := resp.LeaseState
+
+			fmt.Printf("  Lease Status: %s\n", *leaseStatus)
+			fmt.Printf("  Lease State: %s\n", *leaseState)
+
+			if *leaseStatus == "locked" && *leaseState == "leased" {
+				fmt.Printf("  -> The blob is leased.\n")
+				lockedTables = append(lockedTables, blobName)
+			} else {
+				fmt.Printf("  -> The blob is not leased.\n")
+			}
+		}
+	}
+
+	return lockedTables
 }

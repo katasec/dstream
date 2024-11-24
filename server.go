@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/katasec/dstream/cdc"
 	"github.com/katasec/dstream/cdc/lockers"
@@ -16,6 +18,7 @@ import (
 
 type Server struct {
 	config        *config.Config
+	dbConn        *sql.DB
 	lockerFactory *lockers.LockerFactory
 	// cancelFunc    context.CancelFunc
 	wg *sync.WaitGroup
@@ -45,6 +48,7 @@ func NewServer() *Server {
 
 	return &Server{
 		config:        config,
+		dbConn:        dbConn,
 		lockerFactory: lockerFactory,
 		wg:            &sync.WaitGroup{},
 	}
@@ -52,21 +56,34 @@ func NewServer() *Server {
 
 // Start initializes the TableMonitoringService and begins monitoring each table in the config
 func (s *Server) Start() {
-	// Connect to the database
-	dbConn, err := db.Connect(s.config.DBConnectionString)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer dbConn.Close()
+	defer s.dbConn.Close()
 
 	// Create a new context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Create a new instance of TableMonitoringService
-	tableService := cdc.NewTableMonitoringService(dbConn, s.config)
+	// Loop until we have tables to monitor
+	var tablesToMonitor []config.TableConfig
+	for {
+		tablesToMonitor = s.getTablestoMonitor()
 
-	// Start the TableMonitoringService
+		if len(tablesToMonitor) > 0 {
+			break
+		}
+
+		log.Println("No tables to monitor. Retrying in 10 minutes...")
+		select {
+		case <-time.After(10 * time.Minute): // Wait for 10 minutes
+		case <-ctx.Done(): // Exit loop if context is canceled
+			log.Println("Context canceled, stopping server start.")
+			return
+		}
+	}
+
+	// Create table monitoring service for those tables
+	tableService := cdc.NewTableMonitoringService(s.dbConn, s.config, tablesToMonitor)
+
+	// Start Monitoring
 	go func() {
 		if err := tableService.StartMonitoring(ctx); err != nil {
 			log.Printf("Monitoring service error: %v", err)
@@ -74,11 +91,41 @@ func (s *Server) Start() {
 	}()
 
 	// Wait for interrupt signal for graceful shutdown
-	s.handleShutdown(ctx, cancel, tableService)
+	s.handleShutdown(cancel, tableService)
+}
+
+func (s *Server) getTablestoMonitor() []config.TableConfig {
+	tablesToMonitor := []config.TableConfig{}
+
+	// Create the locker defined in the config HCL
+	lockerFactory := lockers.NewLockerFactory(s.config, nil)
+	lockedTables, _ := lockerFactory.GetLockedTables()
+
+	// Convert lockedTables to a set for efficient lookup
+	lockedTableSet := make(map[string]struct{})
+	for _, locked := range lockedTables {
+		lockedTableSet[locked] = struct{}{}
+	}
+
+	// Iterate the tables in config
+	for _, table := range s.config.Tables {
+		lockName := table.Name + ".lock"
+
+		// Check if lockName is in lockedTableSet
+		if _, exists := lockedTableSet[lockName]; exists {
+			// Skip if lockName is already in lockedTableSet
+			continue
+		}
+
+		// Add to tablesToMonitor if not locked
+		tablesToMonitor = append(tablesToMonitor, table)
+	}
+
+	return tablesToMonitor
 }
 
 // handleShutdown listens for termination signals and ensures graceful shutdown
-func (s *Server) handleShutdown(ctx context.Context, cancel context.CancelFunc, tableService *cdc.TableMonitoringService) {
+func (s *Server) handleShutdown(cancel context.CancelFunc, tableService *cdc.TableMonitoringService) {
 	// Capture SIGINT and SIGTERM signals
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
