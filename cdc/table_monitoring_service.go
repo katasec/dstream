@@ -22,7 +22,6 @@ type TableMonitoringService struct {
 	leaseIDs        map[string]string // Map to store lease IDs for each lock
 	// renewalCancelFuncs map[string]context.CancelFunc // Map to store cancel functions for renewal goroutines
 	// mu           sync.Mutex // Mutex to synchronize access to maps
-	leaseDB      *lockers.LeaseDBManager
 	tableLockers map[string]lockers.DistributedLocker
 }
 
@@ -39,13 +38,12 @@ type TableMonitoringService struct {
 
 func NewTableMonitoringService(db *sql.DB, config *config.Config, tablesToMonitor []config.TableConfig) *TableMonitoringService {
 	// Initialize the LeaseDBManager
-	leaseDB := lockers.NewLeaseDBManager(db)
+	//leaseDB := lockers.NewLeaseDBManager(db)
 
 	return &TableMonitoringService{
 		db:              db,
 		config:          config,
 		lockerFactory:   lockers.NewLockerFactory(config), // Get Locker type from config (for e.g. bloblocker)
-		leaseDB:         leaseDB,                          // Assign leaseDB to the TableMonitoringService
 		leaseIDs:        make(map[string]string),
 		tableLockers:    make(map[string]lockers.DistributedLocker),
 		tablesToMonitor: tablesToMonitor,
