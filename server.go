@@ -41,10 +41,10 @@ func NewServer() *Server {
 	}
 
 	// Initialize LeaseDBManager
-	leaseDB := lockers.NewLeaseDBManager(dbConn)
+	//leaseDB := lockers.NewLeaseDBManager(dbConn)
 
 	// Initialize LockerFactory with config and LeaseDBManager
-	lockerFactory := lockers.NewLockerFactory(config, leaseDB)
+	lockerFactory := lockers.NewLockerFactory(config)
 
 	return &Server{
 		config:        config,
@@ -104,7 +104,7 @@ func (s *Server) getTablestoMonitor() []config.TableConfig {
 	tablesToMonitor := []config.TableConfig{}
 
 	// Create the locker defined in the config HCL
-	lockerFactory := lockers.NewLockerFactory(s.config, nil)
+	lockerFactory := lockers.NewLockerFactory(s.config)
 	lockedTables, _ := lockerFactory.GetLockedTables()
 
 	// Convert lockedTables to a set for efficient lookup

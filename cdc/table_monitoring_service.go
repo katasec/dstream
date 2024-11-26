@@ -44,8 +44,8 @@ func NewTableMonitoringService(db *sql.DB, config *config.Config, tablesToMonito
 	return &TableMonitoringService{
 		db:              db,
 		config:          config,
-		lockerFactory:   lockers.NewLockerFactory(config, leaseDB), // Get Locker type from config (for e.g. bloblocker)
-		leaseDB:         leaseDB,                                   // Assign leaseDB to the TableMonitoringService
+		lockerFactory:   lockers.NewLockerFactory(config), // Get Locker type from config (for e.g. bloblocker)
+		leaseDB:         leaseDB,                          // Assign leaseDB to the TableMonitoringService
 		leaseIDs:        make(map[string]string),
 		tableLockers:    make(map[string]lockers.DistributedLocker),
 		tablesToMonitor: tablesToMonitor,
