@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/katasec/dstream/cdc"
 	"github.com/katasec/dstream/cdc/lockers"
@@ -63,21 +62,11 @@ func (s *Server) Start() {
 	defer cancel()
 
 	// Loop until we have tables to monitor
-	var tablesToMonitor []config.TableConfig
-	for {
-		tablesToMonitor = s.getTablestoMonitor()
+	tablesToMonitor := s.getTablestoMonitor()
 
-		if len(tablesToMonitor) > 0 {
-			break
-		}
-
-		log.Println("No tables to monitor. Retrying in 10 minutes...")
-		select {
-		case <-time.After(10 * time.Minute): // Wait for 10 minutes
-		case <-ctx.Done(): // Exit loop if context is canceled
-			log.Println("Context canceled, stopping server start.")
-			return
-		}
+	if len(tablesToMonitor) == 0 {
+		log.Println("All tables are currently locked, nothing to monitor, exitting.")
+		os.Exit(1)
 	}
 
 	// Log monitored tables:
@@ -105,6 +94,9 @@ func (s *Server) getTablestoMonitor() []config.TableConfig {
 
 	// Create the locker defined in the config HCL
 	lockerFactory := lockers.NewLockerFactory(s.config)
+
+	// From the tables in config, find tables that are locked
+	// and already being monitored by another process
 	lockedTables, _ := lockerFactory.GetLockedTables()
 
 	// Convert lockedTables to a set for efficient lookup

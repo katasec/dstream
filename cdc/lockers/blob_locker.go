@@ -52,9 +52,10 @@ func NewBlobLocker(connectionString, containerName, lockName string, lockTTL tim
 		return nil, fmt.Errorf("failed to create blob lease client: %w", err)
 	}
 
-	if lockTTL < time.Second*60 {
-		lockTTL = time.Second * 60
-	}
+	lockTTL = -1 * time.Second
+	// if lockTTL < time.Second*60 {
+	// 	lockTTL = time.Second * 60
+	// }
 
 	return &BlobLocker{
 		containerName: containerName,

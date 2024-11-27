@@ -128,6 +128,9 @@ func (t *TableMonitoringService) monitorTable(ctx context.Context, wg *sync.Wait
 		log.Printf("Monitoring completed for table %s", tableConfig.Name)
 	}
 
+	/*
+		Switching to an infinite lock on table vs. lock renewals
+	*/
 	// Start lock renewal
-	locker.StartLockRenewal(ctx, lockName)
+	//locker.StartLockRenewal(ctx, lockName)
 }

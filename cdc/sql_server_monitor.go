@@ -122,7 +122,7 @@ func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]i
         ORDER BY ct.__$start_lsn
     `, columnList, monitor.tableName)
 
-	log.Println(query)
+	//log.Println(query)
 	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
