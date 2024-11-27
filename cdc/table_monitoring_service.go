@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -20,21 +21,8 @@ type TableMonitoringService struct {
 	lockerFactory   *lockers.LockerFactory
 	tablesToMonitor []config.TableConfig
 	leaseIDs        map[string]string // Map to store lease IDs for each lock
-	// renewalCancelFuncs map[string]context.CancelFunc // Map to store cancel functions for renewal goroutines
-	// mu           sync.Mutex // Mutex to synchronize access to maps
-	tableLockers map[string]lockers.DistributedLocker
+	tableLockers    map[string]lockers.DistributedLocker
 }
-
-// NewTableMonitoringService initializes a new TableMonitoringService.
-// func NewTableMonitoringService(db *sql.DB, config *config.Config) *TableMonitoringService {
-// 	return &TableMonitoringService{
-// 		db:                 db,
-// 		config:             config,
-// 		lockerFactory:      NewLockerFactory(config),
-// 		leaseIDs:           make(map[string]string),
-// 		renewalCancelFuncs: make(map[string]context.CancelFunc),
-// 	}
-// }
 
 func NewTableMonitoringService(db *sql.DB, config *config.Config, tablesToMonitor []config.TableConfig) *TableMonitoringService {
 	// Initialize the LeaseDBManager
@@ -77,8 +65,13 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 			wg.Done()
 			continue
 		} else {
-			tableLocker.AcquireLock(ctx, lockName)
-			log.Println("Saving table locker for:", lockName)
+			_, err := tableLocker.AcquireLock(ctx, lockName)
+			if err != nil {
+				log.Printf("Could not acquire lock on table: %s, exitting.", lockName)
+				log.Printf(err.Error())
+				os.Exit(1)
+			}
+			log.Println("Saving table locker in memory for:", lockName)
 			t.tableLockers[lockName] = tableLocker
 		}
 

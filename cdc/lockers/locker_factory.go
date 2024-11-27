@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	defaultLockTTL = 300 * time.Second
+	defaultLockTTL = 1 * time.Minute
 )
 
 // LockerFactory creates instances of DistributedLocker based on the configuration
