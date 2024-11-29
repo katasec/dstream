@@ -18,10 +18,11 @@ locks {
 }
 
 # Table configurations with polling intervals
+
 tables {
-    name = "Customers"
+    name = "Customer"
     poll_interval = "5s"
-    max_poll_interval = "1m"
+    max_poll_interval = "2m"
 }
 
 tables {
