@@ -137,18 +137,18 @@ func (c *Config) serviceBusConfigCheck() {
 
 // createTopicIfNotExists checks if a topic exists and creates it if it doesn’t
 func createTopicIfNotExists(client *admin.Client, topicName string) error {
-	// Check if the topic exists
-	_, err := client.GetTopic(context.TODO(), topicName, nil)
-	if err == nil {
-		log.Printf("Topic %s already exists.\n", topicName)
-		return nil // Topic already exists
-	}
 
 	// If topic does not exist, create it
 	log.Printf("Topic %s does not exist. Creating...\n", topicName)
 	response, err := client.CreateTopic(context.TODO(), topicName, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create topic %s: %w", topicName, err)
+	alreadyExists := strings.Contains(err.Error(), "409 Conflict")
+	if alreadyExists {
+		log.Printf("Topic %s, already exists.\n", topicName)
+		return nil
+	} else if err != nil {
+		log.Printf("failed to create topic %s: %w\n", topicName, err)
+		// return fmt.Errorf("failed to create topic %s: %w", topicName, err)
+		os.Exit(1)
 	}
 	fmt.Printf("Topic %s created successfully. Status: %d\n", topicName, response.Status)
 	return nil
