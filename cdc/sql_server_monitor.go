@@ -13,8 +13,8 @@ import (
 	"github.com/katasec/dstream/cdc/sqlserver"
 )
 
-// SQLServerMonitor manages SQL Server CDC monitoring for a specific table
-type SQLServerMonitor struct {
+// SqlServerTableMonitor manages SQL Server CDC monitoring for a specific table
+type SqlServerTableMonitor struct {
 	dbConn          *sql.DB
 	tableName       string
 	pollInterval    time.Duration
@@ -27,7 +27,7 @@ type SQLServerMonitor struct {
 }
 
 // NewSQLServerMonitor initializes a new SQLServerMonitor for a specific table
-func NewSQLServerMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration, publisher publishers.ChangePublisher) *SQLServerMonitor {
+func NewSQLServerMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration) *SqlServerTableMonitor {
 	checkpointMgr := sqlserver.NewCheckpointManager(dbConn, tableName)
 
 	// Fetch column names once and store them in the struct
@@ -36,20 +36,19 @@ func NewSQLServerMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPoll
 		log.Fatalf("Failed to fetch column names for table %s: %v", tableName, err)
 	}
 
-	return &SQLServerMonitor{
+	return &SqlServerTableMonitor{
 		dbConn:          dbConn,
 		tableName:       tableName,
 		pollInterval:    pollInterval,
 		maxPollInterval: maxPollInterval,
 		lastLSNs:        make(map[string][]byte),
 		checkpointMgr:   checkpointMgr,
-		publisher:       publisher,
 		columns:         columns,
 	}
 }
 
 // MonitorTable continuously monitors the specified table
-func (m *SQLServerMonitor) MonitorTable() error {
+func (m *SqlServerTableMonitor) MonitorTable() error {
 	err := m.checkpointMgr.InitializeCheckpointTable()
 	if err != nil {
 		return fmt.Errorf("error initializing checkpoint table: %w", err)
@@ -110,7 +109,7 @@ func (m *SQLServerMonitor) MonitorTable() error {
 }
 
 // fetchCDCChanges queries CDC changes and returns relevant events as a slice of maps
-func (monitor *SQLServerMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
+func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
 	log.Printf("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
 
 	// Use cached column names

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/katasec/dstream/cdc/lockers"
-	"github.com/katasec/dstream/cdc/publishers"
 	"github.com/katasec/dstream/config"
 )
 
@@ -42,20 +41,9 @@ func NewTableMonitoringService(db *sql.DB, config *config.Config, tablesToMonito
 func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 	var wg sync.WaitGroup // WaitGroup to ensure goroutines complete
 
-	// Initialize ChangePublisherFactory
-	publisherFactory := publishers.NewChangePublisherFactory(t.config)
-
 	//for _, tableConfig := range t.config.Tables {
 	for _, tableConfig := range t.tablesToMonitor {
 		wg.Add(1) // Increment the WaitGroup counter for each table
-
-		// Create publisher per table (Servicebus or EventHub etc)
-		publisher, err := publisherFactory.Create(tableConfig.Name)
-		if err != nil {
-			log.Printf("Error creating publisher for table %s: %v", tableConfig.Name, err)
-			wg.Done()
-			continue
-		}
 
 		// Lock table using a locker from LockerFactory. Add locker to list for releasing locks on exit
 		lockName := tableConfig.Name + ".lock"
@@ -85,7 +73,6 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 			tableConfig.Name,
 			pollInterval,
 			maxPollInterval,
-			publisher,
 		)
 
 		// Start monitoring each table as a separate goroutine using the helper function
@@ -118,7 +105,7 @@ func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
 	}
 }
 
-func (t *TableMonitoringService) monitorTable(ctx context.Context, wg *sync.WaitGroup, monitor *SQLServerMonitor, tableConfig config.TableConfig, lockName string, locker lockers.DistributedLocker) {
+func (t *TableMonitoringService) monitorTable(ctx context.Context, wg *sync.WaitGroup, monitor *SqlServerTableMonitor, tableConfig config.TableConfig, lockName string, locker lockers.DistributedLocker) {
 	defer wg.Done() // Mark goroutine as done when it completes
 
 	log.Printf("Starting monitor for table: %s", tableConfig.Name)
@@ -128,9 +115,4 @@ func (t *TableMonitoringService) monitorTable(ctx context.Context, wg *sync.Wait
 		log.Printf("Monitoring completed for table %s", tableConfig.Name)
 	}
 
-	/*
-		Switching to an infinite lock on table vs. lock renewals
-	*/
-	// Start lock renewal
-	//locker.StartLockRenewal(ctx, lockName)
 }
