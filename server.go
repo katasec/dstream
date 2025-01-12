@@ -26,15 +26,17 @@ type Server struct {
 // NewServer initializes the server, loads the configuration, and creates the locker factory
 func NewServer() *Server {
 	// Load config file
-	config, err := config.LoadConfig("dstream.hcl")
-	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
-	}
+	// config, err := config.LoadConfig("dstream.hcl")
+	// if err != nil {
+	// 	log.Fatalf("Error loading config: %v", err)
+	// }
+
+	config := config.NewConfig2()
 
 	config.CheckConfig()
 
 	// Connect to the database
-	dbConn, err := db.Connect(config.DBConnectionString)
+	dbConn, err := db.Connect(config.Ingester.DBConnectionString)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
