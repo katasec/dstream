@@ -28,4 +28,5 @@ func main() {
 	log.Println(config.Ingester.Tables[1].MaxPollInterval)
 
 	log.Println(config.Publisher.Output.ConnectionString)
+	log.Println(config.Ingester.Topic.ConnectionString)
 }
