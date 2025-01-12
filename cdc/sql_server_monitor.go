@@ -26,8 +26,8 @@ type SqlServerTableMonitor struct {
 	columns         []string // Cached column names
 }
 
-// NewSQLServerMonitor initializes a new SQLServerMonitor for a specific table
-func NewSQLServerMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration) *SqlServerTableMonitor {
+// NewSQLServerTableMonitor initializes a new SqlServerTableMonitor
+func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration) *SqlServerTableMonitor {
 	checkpointMgr := sqlserver.NewCheckpointManager(dbConn, tableName)
 
 	// Fetch column names once and store them in the struct

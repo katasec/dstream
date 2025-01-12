@@ -68,7 +68,7 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 		maxPollInterval, _ := tableConfig.GetMaxPollInterval()
 
 		// Initialize SQLServerMonitor for each table with poll intervals and the correct publisher.
-		monitor := NewSQLServerMonitor(
+		monitor := NewSQLServerTableMonitor(
 			t.db,
 			tableConfig.Name,
 			pollInterval,

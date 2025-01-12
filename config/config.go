@@ -41,7 +41,7 @@ func NewConfig() *Config {
 // TableConfig represents individual table configurations in the HCL file
 type TableConfig struct {
 	Name            string `hcl:"name"`
-	PollInterval    string `hcl:"poll_interval"`
+	PollInterval    string `hcl:"poll_interval,optional"`
 	MaxPollInterval string `hcl:"max_poll_interval"`
 }
 
