@@ -92,7 +92,7 @@ func (c *Config) serviceBusConfigCheck() {
 
 	// Ensure each topic exists or create it if not
 	for _, table := range c.Ingester.Tables {
-		topicName := azureservicebus.GenTopicName(c.Ingester.Topic.ConnectionString, table.Name)
+		topicName := azureservicebus.GenTopicName(c.Ingester.DBConnectionString, table.Name)
 		log.Printf("Ensuring topic exists: %s\n", topicName)
 
 		// Check and create topic if it doesn't exist

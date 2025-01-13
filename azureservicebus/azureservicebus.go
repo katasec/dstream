@@ -12,8 +12,20 @@ import (
 )
 
 func GenTopicName(connectionString string, tableName string) string {
-	dbName, _ := extractDatabaseName(connectionString)
-	return fmt.Sprintf("%s-%s-events", dbName, strings.ToLower(tableName))
+	dbName, err := extractDatabaseName(connectionString)
+	if err != nil {
+		fmt.Println("The connection string was:" + connectionString)
+		log.Fatal("Error, database name not found in connection string.")
+	}
+
+	serverName, err := extractServerName(connectionString)
+	if err != nil {
+		fmt.Println("The connection string was:" + connectionString)
+		log.Fatal("Error, server name not found in connection string.")
+	}
+
+	topicName := fmt.Sprintf("%s.%s.%s.events", serverName, dbName, strings.ToLower(tableName))
+	return topicName
 }
 
 // ExtractDatabaseName extracts the database name from a connection string
@@ -30,6 +42,7 @@ func extractDatabaseName(connectionString string) (string, error) {
 		return "", fmt.Errorf("database name not found in connection string")
 	}
 	dbName = strings.ToLower(dbName)
+
 	return dbName, nil
 }
 
@@ -60,6 +73,7 @@ func extractServerName(connectionString string) (string, error) {
 		host = hostname
 	}
 
+	host = strings.ToLower(host)
 	return host, nil
 }
 
