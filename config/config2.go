@@ -1,8 +1,13 @@
 package config
 
 import (
+	"bytes"
+	"fmt"
+	"html/template"
 	"log"
+	"time"
 
+	"github.com/Masterminds/sprig"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -32,9 +37,26 @@ type ResolvedTableConfig struct {
 	MaxPollInterval string
 }
 
+// GetPollInterval returns the PollInterval as a time.Duration
+func (t *ResolvedTableConfig) GetPollInterval() (time.Duration, error) {
+	return time.ParseDuration(t.PollInterval)
+}
+
+// GetMaxPollInterval returns the MaxPollInterval as a time.Duration
+func (t *ResolvedTableConfig) GetMaxPollInterval() (time.Duration, error) {
+	return time.ParseDuration(t.MaxPollInterval)
+}
+
 type TopicConfig struct {
 	Name             string `hcl:"name,attr"`
 	ConnectionString string `hcl:"connection_string,attr"`
+}
+
+// LockConfig represents the configuration for distributed locking
+type LockConfig struct {
+	Type             string `hcl:"type"`                   // Specifies the lock provider type (e.g., "azure_blob")
+	ConnectionString string `hcl:"connection_string,attr"` // Connection string for the lock provider
+	ContainerName    string `hcl:"container_name"`         // Name of the container used for lock files
 }
 
 type PollInterval struct {
@@ -55,6 +77,12 @@ type TableOverride struct {
 type Publisher struct {
 	Source SourceConfig `hcl:"source,block"` // e.g., "EventHub", "ServiceBus", "Console"
 	Output OutputConfig `hcl:"output,block"`
+}
+
+// OutputConfig represents the configuration for output type and connection string
+type OutputConfig struct {
+	Type             string `hcl:"type"`                   // e.g., "EventHub", "ServiceBus", "Console"
+	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
 }
 
 // OutputConfig represents the configuration for output type and connection string
@@ -114,6 +142,27 @@ func LoadConfig2(filePath string) (*Config2, error) {
 	config.Ingester.Tables = resolvedTables
 
 	return &config, nil
+}
+
+// generateHCL Generates the HCL config after processing the text templating
+func generateHCL(filePath string) (hcl string, err error) {
+	// Get the Sprig function map
+	fmap := sprig.TxtFuncMap()
+
+	// Define template for *.hcl and *.tpl files in the current folder
+	// Ensure the Sprig functions are loaded for processing templates
+	t := template.Must(template.New("test").
+		Funcs(fmap).
+		ParseFiles(filePath))
+
+	buf := &bytes.Buffer{}
+	err = t.ExecuteTemplate(buf, filePath, nil)
+	if err != nil {
+		fmt.Printf("Error during template execution: %s", err)
+		return "", err
+	}
+
+	return buf.String(), nil
 }
 
 // processHCL returns a config object based on the provided config file

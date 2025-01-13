@@ -16,7 +16,7 @@ import (
 )
 
 type Server struct {
-	config        *config.Config
+	config        *config.Config2
 	dbConn        *sql.DB
 	lockerFactory *lockers.LockerFactory
 	// cancelFunc    context.CancelFunc
@@ -45,7 +45,7 @@ func NewServer() *Server {
 	//leaseDB := lockers.NewLeaseDBManager(dbConn)
 
 	// Initialize LockerFactory with config and LeaseDBManager
-	lockerFactory := lockers.NewLockerFactory(config)
+	lockerFactory := lockers.NewLockerFactory(config.Ingester.Locks.Type, config.Ingester.Locks.ConnectionString, config.Ingester.Locks.ContainerName)
 
 	return &Server{
 		config:        config,
@@ -78,7 +78,9 @@ func (s *Server) Start() {
 	}
 
 	// Create table monitoring service for those tables
-	tableService := cdc.NewTableMonitoringService(s.dbConn, s.config, tablesToMonitor)
+	locksConfig := s.config.Ingester.Locks
+	lockerFactory := lockers.NewLockerFactory(locksConfig.Type, locksConfig.ConnectionString, locksConfig.ContainerName)
+	tableService := cdc.NewTableMonitoringService(s.dbConn, lockerFactory, tablesToMonitor)
 
 	// Start Monitoring
 	go func() {
@@ -91,11 +93,14 @@ func (s *Server) Start() {
 	s.handleShutdown(cancel, tableService)
 }
 
-func (s *Server) getTablestoMonitor() []config.TableConfig {
-	tablesToMonitor := []config.TableConfig{}
+func (s *Server) getTablestoMonitor() []config.ResolvedTableConfig {
+	tablesToMonitor := []config.ResolvedTableConfig{}
 
 	// Create the locker defined in the config HCL
-	lockerFactory := lockers.NewLockerFactory(s.config)
+	configType := s.config.Ingester.Locks.Type
+	connectionString := s.config.Ingester.Locks.ConnectionString
+	containerName := s.config.Ingester.Locks.ContainerName
+	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
 
 	// From the tables in config, find tables that are locked
 	// and already being monitored by another process
@@ -108,7 +113,7 @@ func (s *Server) getTablestoMonitor() []config.TableConfig {
 	}
 
 	// Iterate the tables in config
-	for _, table := range s.config.Tables {
+	for _, table := range s.config.Ingester.Tables {
 		lockName := table.Name + ".lock"
 
 		// Check if lockName is in lockedTableSet

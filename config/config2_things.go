@@ -8,7 +8,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
-	queues "github.com/katasec/dstream/azureservicebus"
+	"github.com/katasec/dstream/azureservicebus"
 )
 
 // CheckConfig validates the configuration based on the output type and lock type requirements
@@ -20,7 +20,7 @@ func (c *Config2) CheckConfig() {
 
 	// Validate Output configuration
 	switch strings.ToLower(c.Publisher.Output.Type) {
-	case "servicebus":
+	case "azure_service_bus":
 		c.serviceBusConfigCheck()
 	case "console":
 		// Console output type doesn't need a connection string
@@ -88,31 +88,12 @@ func (c *Config2) serviceBusConfigCheck() {
 
 	// Ensure each topic exists or create it if not
 	for _, table := range c.Ingester.Tables {
-		topicName := queues.GenTopicName(c.Ingester.Topic.ConnectionString, table.Name)
+		topicName := azureservicebus.GenTopicName(c.Ingester.Topic.ConnectionString, table.Name)
 		log.Printf("Ensuring topic exists: %s\n", topicName)
 
 		// Check and create topic if it doesn't exist
-		if err := createTopicIfNotExists(client, topicName); err != nil {
+		if err := azureservicebus.CreateTopicIfNotExists(client, topicName); err != nil {
 			log.Fatalf("Error ensuring topic %s exists: %v", topicName, err)
 		}
 	}
 }
-
-// // createTopicIfNotExists checks if a topic exists and creates it if it doesn’t
-// func createTopicIfNotExists(client *admin.Client, topicName string) error {
-
-// 	// If topic does not exist, create it
-// 	log.Printf("Topic %s does not exist. Creating...\n", topicName)
-// 	response, err := client.CreateTopic(context.TODO(), topicName, nil)
-// 	alreadyExists := strings.Contains(err.Error(), "409 Conflict")
-// 	if alreadyExists {
-// 		log.Printf("Topic %s, already exists.\n", topicName)
-// 		return nil
-// 	} else if err != nil {
-// 		log.Printf("failed to create topic %s: %w\n", topicName, err)
-// 		// return fmt.Errorf("failed to create topic %s: %w", topicName, err)
-// 		os.Exit(1)
-// 	}
-// 	fmt.Printf("Topic %s created successfully. Status: %d\n", topicName, response.Status)
-// 	return nil
-// }

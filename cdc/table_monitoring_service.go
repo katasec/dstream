@@ -16,21 +16,19 @@ import (
 
 type TableMonitoringService struct {
 	db              *sql.DB
-	config          *config.Config
 	lockerFactory   *lockers.LockerFactory
-	tablesToMonitor []config.TableConfig
+	tablesToMonitor []config.ResolvedTableConfig
 	leaseIDs        map[string]string // Map to store lease IDs for each lock
 	tableLockers    map[string]lockers.DistributedLocker
 }
 
-func NewTableMonitoringService(db *sql.DB, config *config.Config, tablesToMonitor []config.TableConfig) *TableMonitoringService {
+func NewTableMonitoringService(db *sql.DB, lockerFactory *lockers.LockerFactory, tablesToMonitor []config.ResolvedTableConfig) *TableMonitoringService {
 	// Initialize the LeaseDBManager
 	//leaseDB := lockers.NewLeaseDBManager(db)
 
 	return &TableMonitoringService{
 		db:              db,
-		config:          config,
-		lockerFactory:   lockers.NewLockerFactory(config), // Get Locker type from config (for e.g. bloblocker)
+		lockerFactory:   lockerFactory, // Get Locker type from config (for e.g. bloblocker)
 		leaseIDs:        make(map[string]string),
 		tableLockers:    make(map[string]lockers.DistributedLocker),
 		tablesToMonitor: tablesToMonitor,
@@ -56,7 +54,7 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 			_, err := tableLocker.AcquireLock(ctx, lockName)
 			if err != nil {
 				log.Printf("Could not acquire lock on table: %s, exitting.", lockName)
-				log.Printf(err.Error())
+				log.Println(err.Error())
 				os.Exit(1)
 			}
 			log.Println("Saving table locker in memory for:", lockName)
@@ -76,7 +74,7 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 		)
 
 		// Start monitoring each table as a separate goroutine using the helper function
-		go t.monitorTable(ctx, &wg, monitor, tableConfig, lockName, tableLocker)
+		go t.monitorTable(&wg, monitor, tableConfig)
 
 		// Stagger the start of each monitor by a short interval
 		time.Sleep(500 * time.Millisecond)
@@ -89,7 +87,7 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 }
 
 func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
-	for _, table := range t.config.Tables {
+	for _, table := range t.tablesToMonitor {
 		log.Printf("Attempting to release lock for:%s \n", table.Name)
 		lockName := table.Name + ".lock"
 		myLocker := t.tableLockers[lockName]
@@ -105,7 +103,7 @@ func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
 	}
 }
 
-func (t *TableMonitoringService) monitorTable(ctx context.Context, wg *sync.WaitGroup, monitor *SqlServerTableMonitor, tableConfig config.TableConfig, lockName string, locker lockers.DistributedLocker) {
+func (t *TableMonitoringService) monitorTable(wg *sync.WaitGroup, monitor *SqlServerTableMonitor, tableConfig config.ResolvedTableConfig) {
 	defer wg.Done() // Mark goroutine as done when it completes
 
 	log.Printf("Starting monitor for table: %s", tableConfig.Name)

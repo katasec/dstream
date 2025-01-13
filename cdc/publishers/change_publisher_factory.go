@@ -7,42 +7,44 @@ import (
 	"strings"
 
 	"github.com/katasec/dstream/azureservicebus"
-	"github.com/katasec/dstream/config"
 )
 
 // ChangePublisherFactory is responsible for creating ChangePublisher instances based on config.
 type ChangePublisherFactory struct {
-	config *config.Config
+	outputType         string
+	connectionString   string
+	dbConnectionString string
 }
 
-// NewChangePublisherFactory initializes a new ChangePublisherFactory with the application config.
-func NewChangePublisherFactory(config *config.Config) *ChangePublisherFactory {
+func NewChangePublisherFactory(outputType string, connectionString string, dbConnectionString string) *ChangePublisherFactory {
 	return &ChangePublisherFactory{
-		config: config,
+		outputType:         outputType,
+		connectionString:   connectionString,
+		dbConnectionString: dbConnectionString,
 	}
 }
 
 // Create returns a ChangePublisher based on the Output.Type in config.
 func (f *ChangePublisherFactory) Create(tableName string) (ChangePublisher, error) {
-	switch strings.ToLower(f.config.Output.Type) {
+	switch strings.ToLower(f.outputType) {
 	case "eventhub":
 		log.Println("*** Creating EventHub publisher...")
-		if f.config.Output.ConnectionString == "" {
+		if f.connectionString == "" {
 			return nil, errors.New("EventHub connection string is required")
 		}
-		return NewEventHubPublisher(f.config.Output.ConnectionString), nil
+		return NewEventHubPublisher(f.connectionString), nil
 
 	case "servicebus":
 		log.Println("*** Creating ServiceBus publisher...")
-		if f.config.Output.ConnectionString == "" {
+		if f.connectionString == "" {
 			return nil, errors.New("ServiceBus connection string is required")
 		}
 		// Generate the topic name based on the database and table name
-		topicName := azureservicebus.GenTopicName(f.config.DBConnectionString, tableName)
+		topicName := azureservicebus.GenTopicName(f.dbConnectionString, tableName)
 		log.Printf("Using topic: %s\n", topicName)
 
 		// Create a new ServiceBusPublisher for the topic
-		publisher, err := NewServiceBusPublisher(f.config.Output.ConnectionString, topicName)
+		publisher, err := NewServiceBusPublisher(f.connectionString, topicName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create ServiceBus publisher for topic %s: %w", topicName, err)
 		}

@@ -11,7 +11,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/lease"
-	"github.com/katasec/dstream/config"
 )
 
 type BlobLocker struct {
@@ -24,7 +23,7 @@ type BlobLocker struct {
 	ctx             context.Context
 }
 
-func NewBlobLocker(connectionString, containerName, lockName string, lockTTL time.Duration) (*BlobLocker, error) {
+func NewBlobLocker(connectionString, containerName, lockName string) (*BlobLocker, error) {
 
 	// Create azblobClient and create container
 	azblobClient, err := azblob.NewClientFromConnectionString(connectionString, nil)
@@ -52,7 +51,7 @@ func NewBlobLocker(connectionString, containerName, lockName string, lockTTL tim
 		return nil, fmt.Errorf("failed to create blob lease client: %w", err)
 	}
 
-	lockTTL = -1 * time.Second
+	lockTTL := -1 * time.Second
 	// if lockTTL < time.Second*60 {
 	// 	lockTTL = time.Second * 60
 	// }
@@ -132,10 +131,9 @@ func (bl *BlobLocker) StartLockRenewal(ctx context.Context, lockName string) {
 // GetLockedTables Iterates through all the blobs in the container to find locked tables
 func (bl *BlobLocker) GetLockedTables() []string {
 	lockedTables := []string{}
-	config := config.NewConfig()
 
 	// Create blob pager
-	containerName := config.Locks.ContainerName
+	containerName := bl.containerName
 	containerClient := bl.azblobClient.ServiceClient().NewContainerClient(containerName)
 	pager := containerClient.NewListBlobsFlatPager(nil)
 
@@ -179,17 +177,17 @@ func (bl *BlobLocker) GetLockedTables() []string {
 	return lockedTables
 }
 
-func GetBlobLockerLockedTables(config *config.Config) []string {
+func GetBlobLockerLockedTables(containerName string, connectionstring string) []string {
 	lockedTables := []string{}
 	// Create azblobClient and create container
-	azblobClient, err := azblob.NewClientFromConnectionString(config.Locks.ConnectionString, nil)
+	azblobClient, err := azblob.NewClientFromConnectionString(connectionstring, nil)
 	if err != nil {
 		log.Println("failed to create Azure Blob client: %w, exitting.", err)
 		os.Exit(1)
 	}
 
 	// Create blob pager
-	containerClient := azblobClient.ServiceClient().NewContainerClient(config.Locks.ContainerName)
+	containerClient := azblobClient.ServiceClient().NewContainerClient(containerName)
 	pager := containerClient.NewListBlobsFlatPager(nil)
 
 	// User pager to iterate through blob store pages

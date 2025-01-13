@@ -1,10 +1,14 @@
 package azureservicebus
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 )
 
 func GenTopicName(connectionString string, tableName string) string {
@@ -57,4 +61,23 @@ func extractServerName(connectionString string) (string, error) {
 	}
 
 	return host, nil
+}
+
+// createTopicIfNotExists checks if a topic exists and creates it if it doesn’t
+func CreateTopicIfNotExists(client *admin.Client, topicName string) error {
+
+	// If topic does not exist, create it
+	log.Printf("Topic %s does not exist. Creating...\n", topicName)
+	response, err := client.CreateTopic(context.TODO(), topicName, nil)
+	alreadyExists := strings.Contains(err.Error(), "409 Conflict")
+	if alreadyExists {
+		log.Printf("Topic %s, already exists.\n", topicName)
+		return nil
+	} else if err != nil {
+		log.Printf("failed to create topic %s: %v\n", topicName, err)
+		// return fmt.Errorf("failed to create topic %s: %w", topicName, err)
+		os.Exit(1)
+	}
+	fmt.Printf("Topic %s created successfully. Status: %d\n", topicName, response.Status)
+	return nil
 }

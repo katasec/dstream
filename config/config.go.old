@@ -67,11 +67,11 @@ func (c *Config) CheckConfig() {
 
 	// Validate Output configuration
 	switch strings.ToLower(c.Output.Type) {
-	case "eventhub":
+	case "azure_eventhub":
 		if c.Output.ConnectionString == "" {
 			log.Fatalf("Error, %s connection string is required.", c.Output.Type)
 		}
-	case "servicebus":
+	case "azure_service_bus":
 		c.serviceBusConfigCheck()
 	case "console":
 		// Console output type doesn't need a connection string
@@ -146,7 +146,7 @@ func createTopicIfNotExists(client *admin.Client, topicName string) error {
 		log.Printf("Topic %s, already exists.\n", topicName)
 		return nil
 	} else if err != nil {
-		log.Printf("failed to create topic %s: %w\n", topicName, err)
+		log.Printf("failed to create topic %s: %v\n", topicName, err)
 		// return fmt.Errorf("failed to create topic %s: %w", topicName, err)
 		os.Exit(1)
 	}
