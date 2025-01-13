@@ -3,8 +3,8 @@ package config
 import (
 	"bytes"
 	"fmt"
-	"html/template"
 	"log"
+	"text/template"
 	"time"
 
 	"github.com/Masterminds/sprig"
@@ -14,7 +14,7 @@ import (
 )
 
 // Config holds the entire configuration as represented in the HCL file
-type Config2 struct {
+type Config struct {
 	Ingester  Ingester  `hcl:"ingester,block"`
 	Publisher Publisher `hcl:"publisher,block"`
 }
@@ -91,9 +91,9 @@ type SourceConfig struct {
 	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
 }
 
-func NewConfig2() *Config2 {
+func NewConfig() *Config {
 	// Load config file
-	config, err := LoadConfig2("dstream.hcl")
+	config, err := LoadConfig("dstream.hcl")
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
@@ -102,8 +102,8 @@ func NewConfig2() *Config2 {
 }
 
 // LoadConfig reads, processes the HCL configuration file, and replaces placeholders with environment variables
-func LoadConfig2(filePath string) (*Config2, error) {
-	var config Config2
+func LoadConfig(filePath string) (*Config, error) {
+	var config Config
 
 	// Generate HCL config post text templating
 	hcl, err := generateHCL(filePath)
@@ -166,14 +166,14 @@ func generateHCL(filePath string) (hcl string, err error) {
 }
 
 // processHCL returns a config object based on the provided config file
-func processHCL2(configHCL string, filePath string) Config2 {
+func processHCL2(configHCL string, filePath string) Config {
 	// Parse HCL config starting from position 0
 	src := []byte(configHCL)
 	pos := hcl.Pos{Line: 0, Column: 0, Byte: 0}
 	f, _ := hclsyntax.ParseConfig(src, filePath, pos)
 
 	// Decode HCL into a config struct and return to caller
-	var c Config2
+	var c Config
 	decodeDiags := gohcl.DecodeBody(f.Body, nil, &c)
 	if decodeDiags.HasErrors() {
 		log.Fatal(decodeDiags.Error())

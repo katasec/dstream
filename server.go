@@ -16,7 +16,7 @@ import (
 )
 
 type Server struct {
-	config        *config.Config2
+	config        *config.Config
 	dbConn        *sql.DB
 	lockerFactory *lockers.LockerFactory
 	// cancelFunc    context.CancelFunc
@@ -31,7 +31,7 @@ func NewServer() *Server {
 	// 	log.Fatalf("Error loading config: %v", err)
 	// }
 
-	config := config.NewConfig2()
+	config := config.NewConfig()
 
 	config.CheckConfig()
 

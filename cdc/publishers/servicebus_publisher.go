@@ -21,6 +21,7 @@ type ServiceBusPublisher struct {
 func NewServiceBusPublisher(connectionString, topicName string) (*ServiceBusPublisher, error) {
 	client, err := azservicebus.NewClientFromConnectionString(connectionString, nil)
 	if err != nil {
+		log.Println("connectionString:" + connectionString)
 		return nil, fmt.Errorf("failed to create Service Bus client: %w", err)
 	}
 

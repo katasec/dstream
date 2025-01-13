@@ -12,7 +12,7 @@ import (
 )
 
 // CheckConfig validates the configuration based on the output type and lock type requirements
-func (c *Config2) CheckConfig() {
+func (c *Config) CheckConfig() {
 	if c.Ingester.DBConnectionString == "" {
 		log.Println("Error, DBConnectionString was not found, exiting.")
 		os.Exit(0)
@@ -41,7 +41,7 @@ func (c *Config2) CheckConfig() {
 }
 
 // validateBlobLockConfig validates the Azure Blob configuration for locks
-func (c *Config2) validateBlobLockConfig() {
+func (c *Config) validateBlobLockConfig() {
 
 	// Check for connection string
 	connectionString := c.Ingester.Locks.ConnectionString
@@ -71,7 +71,7 @@ func (c *Config2) validateBlobLockConfig() {
 }
 
 // serviceBusConfigCheck validates the Service Bus configuration and ensures topics exist for each table
-func (c *Config2) serviceBusConfigCheck() {
+func (c *Config) serviceBusConfigCheck() {
 
 	connectionString := c.Publisher.Output.ConnectionString
 	publisherType := c.Publisher.Output.Type
@@ -82,8 +82,12 @@ func (c *Config2) serviceBusConfigCheck() {
 
 	// Create a Service Bus admin client
 	client, err := admin.NewClientFromConnectionString(connectionString, nil)
+
 	if err != nil {
+		log.Println(connectionString)
 		log.Fatalf("Failed to create Service Bus client: %v", err)
+	} else {
+		log.Println("Service Bus client created")
 	}
 
 	// Ensure each topic exists or create it if not
