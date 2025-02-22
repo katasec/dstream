@@ -3,7 +3,6 @@ package cdc
 import (
 	"context"
 	"database/sql"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -46,17 +45,17 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 		lockName := tableConfig.Name + ".lock"
 		tableLocker, err := t.lockerFactory.CreateLocker(lockName)
 		if err != nil {
-			log.Printf("Failed to create locker for table %s: %v", tableConfig.Name, err)
+			log.Info("Failed to create locker for table %s: %v", tableConfig.Name, err)
 			wg.Done()
 			continue
 		} else {
 			_, err := tableLocker.AcquireLock(ctx, lockName)
 			if err != nil {
-				log.Printf("Could not acquire lock on table: %s, exitting.", lockName)
-				log.Println(err.Error())
+				log.Info("Could not acquire lock on table: %s, exitting.", lockName)
+				log.Info(err.Error())
 				os.Exit(1)
 			}
-			log.Println("Saving table locker in memory for:", lockName)
+			log.Info("Saving table locker in memory for:", lockName)
 			t.tableLockers[lockName] = tableLocker
 		}
 
@@ -81,23 +80,23 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 
 	// Wait for all monitoring goroutines to complete
 	wg.Wait()
-	log.Println("All table monitors have completed.")
+	log.Info("All table monitors have completed.")
 	return nil
 }
 
 func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
 	for _, table := range t.tablesToMonitor {
-		log.Printf("Attempting to release lock for:%s \n", table.Name)
+		log.Info("Attempting to release lock for:%s \n", table.Name)
 		lockName := table.Name + ".lock"
 		myLocker := t.tableLockers[lockName]
 
 		if myLocker != nil {
 			err := myLocker.ReleaseLock(ctx, table.Name, "")
 			if err != nil {
-				log.Println(err.Error())
+				log.Info(err.Error())
 			}
 		} else {
-			log.Printf("No lock found for %s\n", table.Name)
+			log.Info("No lock found for %s\n", table.Name)
 		}
 	}
 }
@@ -108,11 +107,11 @@ func (t *TableMonitoringService) monitorTable(wg *sync.WaitGroup, monitor *SqlSe
 	// Create a new context for this table monitor
 	ctx := context.Background()
 
-	log.Printf("Starting monitor for table: %s", tableConfig.Name)
+	log.Info("Starting monitor for table: %s", tableConfig.Name)
 	if err := monitor.MonitorTable(ctx); err != nil {
-		log.Printf("Error monitoring table %s: %v", tableConfig.Name, err)
+		log.Info("Error monitoring table %s: %v", tableConfig.Name, err)
 	} else {
-		log.Printf("Monitoring completed for table %s", tableConfig.Name)
+		log.Info("Monitoring completed for table %s", tableConfig.Name)
 	}
 
 }

@@ -39,6 +39,13 @@ func (c *Config) CheckConfig() {
 		log.Error("Unknown lock type", "type", c.Ingester.Locks.Type)
 		os.Exit(1)
 	}
+
+	// Validate Ingestion connection string
+	if c.Ingester.Topic.ConnectionString == "" {
+		log.Error("Ingester Topic connection string required for ingestion")
+		os.Exit(1)
+	}
+
 }
 
 // validateBlobLockConfig validates the Azure Blob configuration for locks

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -34,7 +34,8 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 	// Fetch column names once and store them in the struct
 	columns, err := fetchColumnNames(dbConn, tableName)
 	if err != nil {
-		log.Fatalf("Failed to fetch column names for table %s: %v", tableName, err)
+		log.Info("Failed to fetch column names for table %s: %v", tableName, err)
+		os.Exit(1)
 	}
 
 	return &SqlServerTableMonitor{
@@ -73,21 +74,21 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 		// Check for context cancellation
 		select {
 		case <-ctx.Done():
-			log.Printf("Stopping monitoring for table %s due to context cancellation", m.tableName)
+			log.Info("Stopping monitoring for table %s due to context cancellation", m.tableName)
 			return ctx.Err()
 		default:
 		}
-		log.Printf("Polling changes for table: %s", m.tableName)
+		log.Info("Polling changes for table: %s", m.tableName)
 		changes, newLSN, err := m.fetchCDCChanges(m.lastLSNs[m.tableName])
 
 		if err != nil {
-			log.Printf("Error fetching changes for %s: %v", m.tableName, err)
+			log.Info("Error fetching changes for %s: %v", m.tableName, err)
 			time.Sleep(backoff.GetInterval()) // Wait with current interval on error
 			continue
 		}
 
 		if len(changes) > 0 {
-			log.Printf("Changes detected for table %s; publishing...", m.tableName)
+			log.Info("Changes detected for table %s; publishing...", m.tableName)
 
 			// Publish detected changes
 			//consolePublisher := &publishers.ConsolePublisher{}
@@ -109,7 +110,7 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 		} else {
 			// If no changes, increase the polling interval (backoff)
 			backoff.IncreaseInterval()
-			log.Printf("No changes found for table %s. Next poll in %s", m.tableName, backoff.GetInterval())
+			log.Info("No changes found for table %s. Next poll in %s", m.tableName, backoff.GetInterval())
 		}
 
 		time.Sleep(backoff.GetInterval())
@@ -118,7 +119,7 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 
 // fetchCDCChanges queries CDC changes and returns relevant events as a slice of maps
 func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
-	log.Printf("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
+	log.Info("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
 
 	// Use cached column names
 	columnList := "ct.__$start_lsn, ct.__$operation"
@@ -132,7 +133,7 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
         ORDER BY ct.__$start_lsn
     `, columnList, monitor.tableName)
 
-	log.Println(query)
+	log.Info(query)
 	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
@@ -196,7 +197,7 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 
 	// Save the last LSN if changes were found
 	if len(changes) > 0 {
-		log.Printf("Saving new last LSN for table %s: %x", monitor.tableName, latestLSN)
+		log.Info("Saving new last LSN for table %s: %x", monitor.tableName, latestLSN)
 		err := monitor.checkpointMgr.SaveLastLSN(latestLSN)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to save last LSN for %s: %w", monitor.tableName, err)
@@ -215,7 +216,7 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		WHERE TABLE_NAME = @tableName 
 		AND TABLE_SCHEMA = 'dbo'`
 
-	log.Println(strings.Replace(query, "@tableName", "'"+tableName+"'", 1))
+	log.Info(strings.Replace(query, "@tableName", "'"+tableName+"'", 1))
 
 	rows, err := db.Query(query, sql.Named("tableName", tableName))
 
@@ -230,9 +231,9 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		if err := rows.Scan(&columnName); err != nil {
 			return nil, err
 		}
-		log.Printf("Found column: %s", columnName)
+		log.Info("Found column: %s", columnName)
 		columns = append(columns, columnName)
 	}
-	log.Printf("Total columns found for table %s: %v", tableName, columns)
+	log.Info("Total columns found for table %s: %v", tableName, columns)
 	return columns, rows.Err()
 }
