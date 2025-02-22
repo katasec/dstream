@@ -1,6 +1,7 @@
 package cdc
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -48,7 +49,7 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 }
 
 // MonitorTable continuously monitors the specified table
-func (m *SqlServerTableMonitor) MonitorTable() error {
+func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 	err := m.checkpointMgr.InitializeCheckpointTable()
 	if err != nil {
 		return fmt.Errorf("error initializing checkpoint table: %w", err)
@@ -69,6 +70,13 @@ func (m *SqlServerTableMonitor) MonitorTable() error {
 
 	// Begin monitoring loop
 	for {
+		// Check for context cancellation
+		select {
+		case <-ctx.Done():
+			log.Printf("Stopping monitoring for table %s due to context cancellation", m.tableName)
+			return ctx.Err()
+		default:
+		}
 		log.Printf("Polling changes for table: %s", m.tableName)
 		changes, newLSN, err := m.fetchCDCChanges(m.lastLSNs[m.tableName])
 
@@ -113,10 +121,13 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 	log.Printf("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
 
 	// Use cached column names
-	columnList := "ct.__$start_lsn, ct.__$operation, " + strings.Join(monitor.columns, ", ")
+	columnList := "ct.__$start_lsn, ct.__$operation"
+	if len(monitor.columns) > 0 {
+		columnList += ", " + strings.Join(monitor.columns, ", ")
+	}
 	query := fmt.Sprintf(`
         SELECT %s
-        FROM cdc.dbo_%s_CT AS ct
+        FROM TestDB.cdc.dbo_%s_CT AS ct
         WHERE ct.__$start_lsn > @lastLSN
         ORDER BY ct.__$start_lsn
     `, columnList, monitor.tableName)
@@ -197,7 +208,13 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 
 // fetchColumnNames fetches column names for a specified table
 func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
-	query := `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tableName`
+	// Get the capture instance name for the table
+	query := `
+		SELECT COLUMN_NAME 
+		FROM INFORMATION_SCHEMA.COLUMNS 
+		WHERE TABLE_NAME = @tableName 
+		AND TABLE_SCHEMA = 'dbo'`
+
 	rows, err := db.Query(query, sql.Named("tableName", tableName))
 	if err != nil {
 		return nil, err
@@ -210,7 +227,9 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		if err := rows.Scan(&columnName); err != nil {
 			return nil, err
 		}
+		log.Printf("Found column: %s", columnName)
 		columns = append(columns, columnName)
 	}
+	log.Printf("Total columns found for table %s: %v", tableName, columns)
 	return columns, rows.Err()
 }

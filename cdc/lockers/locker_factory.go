@@ -46,15 +46,16 @@ func (f *LockerFactory) CreateLocker(lockName string) (DistributedLocker, error)
 	}
 }
 
-// GetUnlockedTable Gets locked tables by the specified locked
-func (f *LockerFactory) GetLockedTables() ([]string, error) {
+// GetLockedTables checks if specific tables are locked
+func (f *LockerFactory) GetLockedTables(tableNames []string) ([]string, error) {
 	switch f.configType {
-	case "azure_blob_db":
-		lockedtables := []string{}
-		return lockedtables, nil
 	case "azure_blob":
-		lockedtables := GetBlobLockerLockedTables(f.containerName, f.connectionString)
-		return lockedtables, nil
+		// Create a temporary locker to check table locks
+		tempLocker, err := NewBlobLocker(f.connectionString, f.containerName, "temp")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create blob locker: %w", err)
+		}
+		return tempLocker.GetLockedTables(tableNames)
 	default:
 		return nil, fmt.Errorf("unsupported lock type: %s", f.configType)
 	}

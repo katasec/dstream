@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"log"
 	"os"
 	"strings"
 
@@ -14,7 +13,7 @@ import (
 // CheckConfig validates the configuration based on the output type and lock type requirements
 func (c *Config) CheckConfig() {
 	if c.Ingester.DBConnectionString == "" {
-		log.Println("Error, DBConnectionString was not found, exiting.")
+		log.Error("DBConnectionString not found, exiting")
 		os.Exit(0)
 	}
 
@@ -24,9 +23,10 @@ func (c *Config) CheckConfig() {
 		c.serviceBusConfigCheck()
 	case "console":
 		// Console output type doesn't need a connection string
-		log.Println("Output set to console; no additional connection string required.")
+		log.Debug("Output set to console; no additional connection string required")
 	default:
-		log.Fatalf("Error, unknown output type: %s", c.Publisher.Output.Type)
+		log.Error("Unknown output type", "type", c.Publisher.Output.Type)
+		os.Exit(1)
 	}
 
 	// Validate Lock configuration
@@ -36,7 +36,8 @@ func (c *Config) CheckConfig() {
 	case "azure_blob":
 		c.validateBlobLockConfig()
 	default:
-		log.Fatalf("Error, unknown lock type: %s", c.Ingester.Locks.Type)
+		log.Error("Unknown lock type", "type", c.Ingester.Locks.Type)
+		os.Exit(1)
 	}
 }
 
@@ -46,28 +47,32 @@ func (c *Config) validateBlobLockConfig() {
 	// Check for connection string
 	connectionString := c.Ingester.Locks.ConnectionString
 	if connectionString == "" {
-		log.Fatalf("Error, Azure Blob Storage connection string is required for blob locks.")
+		log.Error("Azure Blob Storage connection string required for blob locks")
+		os.Exit(1)
 	}
 
 	// Check for container name
 	containerName := c.Ingester.Locks.ContainerName
 	if containerName == "" {
-		log.Fatalf("Error, Azure Blob Storage container name is required for blob locks.")
+		log.Error("Azure Blob Storage container name required for blob locks")
+		os.Exit(1)
 	}
 
 	// Create blob client
 	client, err := azblob.NewClientFromConnectionString(connectionString, nil)
 	if err != nil {
-		log.Fatalf("Failed to create Azure Blob client: %v", err)
+		log.Error("Failed to create Azure Blob client", "error", err)
+		os.Exit(1)
 	}
 
 	// Ensure the container exists
 	_, err = client.CreateContainer(context.TODO(), containerName, nil)
 	if err != nil && !strings.Contains(err.Error(), "ContainerAlreadyExists") {
-		log.Fatalf("Failed to ensure Azure Blob container %s: %v", containerName, err)
+		log.Error("Failed to ensure Azure Blob container", "container", containerName, "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("Validated Azure Blob container for locks: %s", containerName)
+	log.Info("Validated Azure Blob container for locks", "container", containerName)
 }
 
 // serviceBusConfigCheck validates the Service Bus configuration and ensures topics exist for each table
@@ -77,27 +82,30 @@ func (c *Config) serviceBusConfigCheck() {
 	publisherType := c.Publisher.Output.Type
 
 	if connectionString == "" {
-		log.Fatalf("Error, %s connection string is required.", publisherType)
+		log.Error("Connection string required", "type", publisherType)
+		os.Exit(1)
 	}
 
 	// Create a Service Bus admin client
 	client, err := admin.NewClientFromConnectionString(connectionString, nil)
 
 	if err != nil {
-		log.Println(connectionString)
-		log.Fatalf("Failed to create Service Bus client: %v", err)
+		log.Debug("Using connection string", "connectionString", connectionString)
+		log.Error("Failed to create Service Bus client", "error", err)
+		os.Exit(1)
 	} else {
-		log.Println("Service Bus client created")
+		log.Debug("Service Bus client created")
 	}
 
 	// Ensure each topic exists or create it if not
 	for _, table := range c.Ingester.Tables {
 		topicName := azureservicebus.GenTopicName(c.Ingester.DBConnectionString, table.Name)
-		log.Printf("Ensuring topic exists: %s\n", topicName)
+		log.Info("Ensuring topic exists", "topic", topicName)
 
 		// Check and create topic if it doesn't exist
 		if err := azureservicebus.CreateTopicIfNotExists(client, topicName); err != nil {
-			log.Fatalf("Error ensuring topic %s exists: %v", topicName, err)
+			log.Error("Failed to ensure topic exists", "topic", topicName, "error", err)
+			os.Exit(1)
 		}
 	}
 }

@@ -39,7 +39,6 @@ func NewTableMonitoringService(db *sql.DB, lockerFactory *lockers.LockerFactory,
 func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 	var wg sync.WaitGroup // WaitGroup to ensure goroutines complete
 
-	//for _, tableConfig := range t.config.Tables {
 	for _, tableConfig := range t.tablesToMonitor {
 		wg.Add(1) // Increment the WaitGroup counter for each table
 
@@ -106,8 +105,11 @@ func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
 func (t *TableMonitoringService) monitorTable(wg *sync.WaitGroup, monitor *SqlServerTableMonitor, tableConfig config.ResolvedTableConfig) {
 	defer wg.Done() // Mark goroutine as done when it completes
 
+	// Create a new context for this table monitor
+	ctx := context.Background()
+
 	log.Printf("Starting monitor for table: %s", tableConfig.Name)
-	if err := monitor.MonitorTable(); err != nil {
+	if err := monitor.MonitorTable(ctx); err != nil {
 		log.Printf("Error monitoring table %s: %v", tableConfig.Name, err)
 	} else {
 		log.Printf("Monitoring completed for table %s", tableConfig.Name)

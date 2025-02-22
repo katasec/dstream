@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -71,19 +70,52 @@ func NewBlobLocker(connectionString, containerName, lockName string) (*BlobLocke
 func (bl *BlobLocker) AcquireLock(ctx context.Context, lockName string) (string, error) {
 	log.Printf("Attempting to acquire lock for blob %s", bl.lockName)
 
-	// Acquire Lease
+	// Try to acquire lease
 	resp, err := bl.blobLeaseClient.AcquireLease(bl.ctx, int32(bl.lockTTL.Seconds()), nil)
 	if err != nil {
+		// If there's already a lease, check its age
 		if strings.Contains(err.Error(), "There is already a lease present") {
-			log.Printf("Table %s is already locked. Skipping...", bl.lockName)
+			// Get the blob's properties to check last modified time
+			blobClient := bl.azblobClient.ServiceClient().NewContainerClient(bl.containerName).NewBlobClient(bl.lockName)
+			props, err := blobClient.GetProperties(ctx, nil)
+			if err != nil {
+				return "", fmt.Errorf("failed to get blob properties for %s: %w", bl.lockName, err)
+			}
+
+			// Check if the lock is older than 2 minutes
+			lastModified := props.LastModified
+			lockAge := time.Since(*lastModified)
+			log.Printf("Lock on %s was last modified at: %v (%.2f minutes ago)", bl.lockName, lastModified.Format(time.RFC3339), lockAge.Minutes())
+
+			if lockAge > 2*time.Minute {
+				log.Printf("Lock on %s is older than 2 minutes (last modified: %v). Breaking lease...", bl.lockName, *lastModified)
+
+				// Break the lease
+				_, err = bl.blobLeaseClient.BreakLease(ctx, nil)
+				if err != nil {
+					return "", fmt.Errorf("failed to break lease for %s: %w", bl.lockName, err)
+				}
+
+				// Wait a moment for the lease to be fully broken
+				time.Sleep(time.Second)
+
+				// Try to acquire the lease again
+				resp, err = bl.blobLeaseClient.AcquireLease(ctx, int32(bl.lockTTL.Seconds()), nil)
+				if err != nil {
+					return "", fmt.Errorf("failed to acquire lease after breaking for %s: %w", bl.lockName, err)
+				}
+				log.Printf("Successfully acquired lock after breaking old lease for %s", bl.lockName)
+				return *resp.LeaseID, nil
+			}
+
+			log.Printf("Table %s is already locked and the lock is still valid (%.2f minutes old, within 2 minute TTL). Skipping...", bl.lockName, lockAge.Minutes())
 			return "", nil
 		}
 		return "", fmt.Errorf("failed to acquire lock for blob %s: %w", bl.lockName, err)
 	}
 
 	log.Printf("Lock acquired for blob %s with Lease ID: %s", bl.lockName, *resp.LeaseID)
-
-	return "", nil
+	return *resp.LeaseID, nil
 }
 
 func (bl *BlobLocker) RenewLock(ctx context.Context, lockName string) error {
@@ -128,104 +160,48 @@ func (bl *BlobLocker) StartLockRenewal(ctx context.Context, lockName string) {
 	}()
 }
 
-// GetLockedTables Iterates through all the blobs in the container to find locked tables
-func (bl *BlobLocker) GetLockedTables() []string {
+// GetLockedTables checks if specific tables are locked
+func (bl *BlobLocker) GetLockedTables(tableNames []string) ([]string, error) {
 	lockedTables := []string{}
+	containerClient := bl.azblobClient.ServiceClient().NewContainerClient(bl.containerName)
 
-	// Create blob pager
-	containerName := bl.containerName
-	containerClient := bl.azblobClient.ServiceClient().NewContainerClient(containerName)
-	pager := containerClient.NewListBlobsFlatPager(nil)
+	// Check each table's lock status
+	for _, tableName := range tableNames {
+		lockName := tableName + ".lock"
+		blobClient := containerClient.NewBlobClient(lockName)
 
-	// User pager to iterate through blob store pages
-	for pager.More() {
-		page, err := pager.NextPage(context.TODO())
+		// Fetch the blob's properties
+		resp, err := blobClient.GetProperties(context.TODO(), nil)
 		if err != nil {
-			log.Fatalf("Failed to list blobs: %v", err)
-		}
-		// for each page, iterate through blob items
-		for _, blob := range page.Segment.BlobItems {
-			blobName := *blob.Name
-			log.Printf("Blob: %s\n", blobName)
-
-			// Get the BlobClient for the current blob
-			blobClient := containerClient.NewBlobClient(blobName)
-
-			// Fetch the blob's properties
-			resp, err := blobClient.GetProperties(context.TODO(), nil)
-			if err != nil {
-				log.Printf("Failed to get properties for blob %s: %v\n", blobName, err)
+			// If blob doesn't exist, it's not locked
+			if strings.Contains(err.Error(), "BlobNotFound") {
 				continue
 			}
+			log.Printf("Failed to get properties for blob %s: %v\n", lockName, err)
+			continue
+		}
 
-			// Check the lease status and state
-			leaseStatus := resp.LeaseStatus
-			leaseState := resp.LeaseState
+		// Check the lease status and state
+		leaseStatus := resp.LeaseStatus
+		leaseState := resp.LeaseState
+		lastModified := resp.LastModified
+		lockAge := time.Since(*lastModified)
 
-			log.Printf("  Lease Status: %s\n", *leaseStatus)
-			log.Printf("  Lease State: %s\n", *leaseState)
+		if *leaseStatus == "locked" && *leaseState == "leased" {
+			log.Printf("Table %s is locked (last modified: %v, %.2f minutes ago)", 
+				tableName, 
+				lastModified.Format(time.RFC3339), 
+				lockAge.Minutes())
 
-			if *leaseStatus == "locked" && *leaseState == "leased" {
-				log.Printf("  -> The blob is leased.\n")
-				lockedTables = append(lockedTables, blobName)
+			// Only consider the table locked if the lock is less than 2 minutes old
+			if lockAge <= 2*time.Minute {
+				log.Printf(" - Lock is still valid (within 2 minute TTL)")
+				lockedTables = append(lockedTables, lockName)
 			} else {
-				log.Printf("  -> The blob is not leased.\n")
+				log.Printf(" - Lock is stale (older than 2 minute TTL), will be broken when acquired")
 			}
 		}
 	}
 
-	return lockedTables
-}
-
-func GetBlobLockerLockedTables(containerName string, connectionstring string) []string {
-	lockedTables := []string{}
-	// Create azblobClient and create container
-	azblobClient, err := azblob.NewClientFromConnectionString(connectionstring, nil)
-	if err != nil {
-		log.Println("failed to create Azure Blob client: %w, exitting.", err)
-		os.Exit(1)
-	}
-
-	// Create blob pager
-	containerClient := azblobClient.ServiceClient().NewContainerClient(containerName)
-	pager := containerClient.NewListBlobsFlatPager(nil)
-
-	// User pager to iterate through blob store pages
-	for pager.More() {
-		page, err := pager.NextPage(context.TODO())
-		if err != nil {
-			log.Fatalf("Failed to list blobs: %v", err)
-		}
-		// for each page, iterate through blob items
-		for _, blob := range page.Segment.BlobItems {
-			blobName := *blob.Name
-			log.Printf("Blob: %s\n", blobName)
-
-			// Get the BlobClient for the current blob
-			blobClient := containerClient.NewBlobClient(blobName)
-
-			// Fetch the blob's properties
-			resp, err := blobClient.GetProperties(context.TODO(), nil)
-			if err != nil {
-				log.Printf("Failed to get properties for blob %s: %v\n", blobName, err)
-				continue
-			}
-
-			// Check the lease status and state
-			leaseStatus := resp.LeaseStatus
-			leaseState := resp.LeaseState
-
-			fmt.Printf("  Lease Status: %s\n", *leaseStatus)
-			fmt.Printf("  Lease State: %s\n", *leaseState)
-
-			if *leaseStatus == "locked" && *leaseState == "leased" {
-				fmt.Printf("  -> The blob is leased.\n")
-				lockedTables = append(lockedTables, blobName)
-			} else {
-				fmt.Printf("  -> The blob is not leased.\n")
-			}
-		}
-	}
-
-	return lockedTables
+	return lockedTables, nil
 }

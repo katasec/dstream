@@ -3,7 +3,6 @@ package publishers
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/katasec/dstream/azureservicebus"
@@ -28,20 +27,20 @@ func NewChangePublisherFactory(outputType string, connectionString string, dbCon
 func (f *ChangePublisherFactory) Create(tableName string) (ChangePublisher, error) {
 	switch strings.ToLower(f.outputType) {
 	case "eventhub":
-		log.Println("*** Creating EventHub publisher...")
+		log.Info("Creating EventHub publisher")
 		if f.connectionString == "" {
 			return nil, errors.New("EventHub connection string is required")
 		}
 		return NewEventHubPublisher(f.connectionString), nil
 
 	case "servicebus":
-		log.Println("*** Creating ServiceBus publisher...")
+		log.Info("Creating ServiceBus publisher")
 		if f.connectionString == "" {
 			return nil, errors.New("ServiceBus connection string is required")
 		}
 		// Generate the topic name based on the database and table name
 		topicName := azureservicebus.GenTopicName(f.dbConnectionString, tableName)
-		log.Printf("Using topic: %s\n", topicName)
+		log.Debug("Using topic", "name", topicName)
 
 		// Create a new ServiceBusPublisher for the topic
 		publisher, err := NewServiceBusPublisher(f.connectionString, topicName)
@@ -52,7 +51,7 @@ func (f *ChangePublisherFactory) Create(tableName string) (ChangePublisher, erro
 
 	default:
 		// Default to console if no specific provider is specified
-		log.Println("Creating Console publisher...")
+		log.Info("Creating Console publisher")
 		return NewConsolePublisher(), nil
 	}
 }

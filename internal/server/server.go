@@ -1,9 +1,8 @@
-package main
+package server
 
 import (
 	"context"
 	"database/sql"
-	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -38,14 +37,18 @@ func NewServer() *Server {
 	// Connect to the database
 	dbConn, err := db.Connect(config.Ingester.DBConnectionString)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize LeaseDBManager
 	//leaseDB := lockers.NewLeaseDBManager(dbConn)
 
 	// Initialize LockerFactory with config and LeaseDBManager
-	lockerFactory := lockers.NewLockerFactory(config.Ingester.Locks.Type, config.Ingester.Locks.ConnectionString, config.Ingester.Locks.ContainerName)
+	configType := config.Ingester.Locks.Type
+	connectionString := config.Ingester.Locks.ConnectionString
+	containerName := config.Ingester.Locks.ContainerName
+	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
 
 	return &Server{
 		config:        config,
@@ -56,7 +59,7 @@ func NewServer() *Server {
 }
 
 // Start initializes the TableMonitoringService and begins monitoring each table in the config
-func (s *Server) Start() {
+func (s *Server) Start() error {
 	defer s.dbConn.Close()
 
 	// Create a new context with cancellation
@@ -67,30 +70,35 @@ func (s *Server) Start() {
 	tablesToMonitor := s.getTablestoMonitor()
 
 	if len(tablesToMonitor) == 0 {
-		log.Println("All tables are currently locked, nothing to monitor, exitting.")
+		log.Info("All tables are currently locked, nothing to monitor, exitting.")
 		os.Exit(1)
 	}
 
 	// Log monitored tables:
-	log.Println("The following tables will be monitored:")
+	log.Info("The following tables will be monitored")
 	for _, table := range tablesToMonitor {
-		log.Println("Table Name:", table.Name)
+		log.Info("Monitoring table", "name", table.Name)
 	}
 
 	// Create table monitoring service for those tables
 	locksConfig := s.config.Ingester.Locks
-	lockerFactory := lockers.NewLockerFactory(locksConfig.Type, locksConfig.ConnectionString, locksConfig.ContainerName)
+	lockerFactory := lockers.NewLockerFactory(
+		locksConfig.Type,
+		locksConfig.ConnectionString,
+		locksConfig.ContainerName,
+	)
 	tableService := cdc.NewTableMonitoringService(s.dbConn, lockerFactory, tablesToMonitor)
 
 	// Start Monitoring
 	go func() {
 		if err := tableService.StartMonitoring(ctx); err != nil {
-			log.Printf("Monitoring service error: %v", err)
+			log.Error("Monitoring service error", "error", err)
 		}
 	}()
 
 	// Wait for interrupt signal for graceful shutdown
 	s.handleShutdown(cancel, tableService)
+	return nil
 }
 
 func (s *Server) getTablestoMonitor() []config.ResolvedTableConfig {
@@ -100,29 +108,35 @@ func (s *Server) getTablestoMonitor() []config.ResolvedTableConfig {
 	configType := s.config.Ingester.Locks.Type
 	connectionString := s.config.Ingester.Locks.ConnectionString
 	containerName := s.config.Ingester.Locks.ContainerName
-	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
 
-	// From the tables in config, find tables that are locked
-	// and already being monitored by another process
-	lockedTables, _ := lockerFactory.GetLockedTables()
-
-	// Convert lockedTables to a set for efficient lookup
-	lockedTableSet := make(map[string]struct{})
-	for _, locked := range lockedTables {
-		lockedTableSet[locked] = struct{}{}
+	// Get list of table names from config
+	tableNames := make([]string, len(s.config.Ingester.Tables))
+	for i, table := range s.config.Ingester.Tables {
+		tableNames[i] = table.Name
 	}
 
-	// Iterate the tables in config
+	// Check which tables are locked
+	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
+	lockedTables, err := lockerFactory.GetLockedTables(tableNames)
+	if err != nil {
+		log.Error("Error checking locked tables", "error", err)
+		return tablesToMonitor
+	}
+
+	// Convert locked tables to a map for efficient lookup
+	lockedTableMap := make(map[string]bool)
+	for _, lockedTable := range lockedTables {
+		lockedTableMap[lockedTable] = true
+	}
+
+	// Add tables that aren't locked to our monitoring list
 	for _, table := range s.config.Ingester.Tables {
 		lockName := table.Name + ".lock"
-
-		// Check if lockName is in lockedTableSet
-		if _, exists := lockedTableSet[lockName]; exists {
-			// Skip if lockName is already in lockedTableSet
+		if lockedTableMap[lockName] {
+			log.Info("Table is locked and being monitored by another process", "table", table.Name)
 			continue
 		}
 
-		// Add to tablesToMonitor if not locked
 		tablesToMonitor = append(tablesToMonitor, table)
 	}
 
@@ -134,9 +148,11 @@ func (s *Server) handleShutdown(cancel context.CancelFunc, tableService *cdc.Tab
 	// Capture SIGINT and SIGTERM signals
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signalChan) // Unregister the signal handlers
+	defer close(signalChan)       // Clean up the channel
 
 	<-signalChan // Wait for a signal
-	log.Println("Ctrl-C detected, shutting down gracefully...")
+	log.Info("Ctrl-C detected, shutting down gracefully...")
 
 	// Cancel the context to stop all monitoring goroutines
 	cancel()
@@ -144,9 +160,9 @@ func (s *Server) handleShutdown(cancel context.CancelFunc, tableService *cdc.Tab
 	if tableService != nil {
 		// Create a new context for releasing locks
 		releaseCtx := context.Background()
-		log.Println("Releasing all locks...")
+		log.Info("Releasing all locks...")
 		tableService.ReleaseAllLocks(releaseCtx)
 	} else {
-		log.Println("No active TableMonitoringService; skipping lock release.")
+		log.Info("No active TableMonitoringService; skipping lock release.")
 	}
 }

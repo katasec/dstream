@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
@@ -21,7 +20,7 @@ type ServiceBusPublisher struct {
 func NewServiceBusPublisher(connectionString, topicName string) (*ServiceBusPublisher, error) {
 	client, err := azservicebus.NewClientFromConnectionString(connectionString, nil)
 	if err != nil {
-		log.Println("connectionString:" + connectionString)
+		log.Debug("Using connection string", "connectionString", connectionString)
 		return nil, fmt.Errorf("failed to create Service Bus client: %w", err)
 	}
 
@@ -39,7 +38,7 @@ func NewServiceBusPublisher(connectionString, topicName string) (*ServiceBusPubl
 
 // PublishChange sends the change data to the batchQueue for processing
 func (s *ServiceBusPublisher) PublishChange(change map[string]interface{}) {
-	log.Println("Queuing message for Service Bus publishing...")
+	log.Debug("Queuing message for Service Bus publishing")
 	// Print message to console
 	prettyPrintJSON(change)
 
@@ -75,7 +74,7 @@ func (s *ServiceBusPublisher) processMessages() {
 func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
 	sender, err := s.client.NewSender(s.topicName, nil)
 	if err != nil {
-		log.Printf("Failed to create Service Bus sender: %v", err)
+		log.Error("Failed to create Service Bus sender", "error", err)
 		return
 	}
 	defer sender.Close(context.Background())
@@ -83,7 +82,7 @@ func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
 	for _, change := range batch {
 		jsonData, err := json.Marshal(change)
 		if err != nil {
-			log.Printf("Error formatting JSON data: %v", err)
+			log.Error("Error formatting JSON data", "error", err)
 			continue
 		}
 
@@ -92,10 +91,10 @@ func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
 		defer cancel()
 
 		if err := sender.SendMessage(ctx, message, nil); err != nil {
-			log.Printf("Failed to send message to Service Bus: %v", err)
+			log.Error("Failed to send message to Service Bus", "error", err)
 			continue
 		}
-		log.Printf("Sent message to Service Bus: %s", jsonData)
+		log.Debug("Sent message to Service Bus", "data", string(jsonData))
 	}
 }
 
@@ -103,7 +102,7 @@ func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
 func prettyPrintJSON(data map[string]interface{}) {
 	jsonData, err := json.MarshalIndent(data, "", "    ")
 	if err != nil {
-		log.Printf("Error printing JSON: %v", err)
+		log.Error("Error printing JSON", "error", err)
 		return
 	}
 	fmt.Println("Message Data:\n", string(jsonData))

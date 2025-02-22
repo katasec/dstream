@@ -2,7 +2,6 @@ package publishers
 
 import (
 	"encoding/json"
-	"log"
 )
 
 // EventHubPublisher implements ChangePublisher, sends messages to Azure Event Hub
@@ -21,9 +20,9 @@ func (e *EventHubPublisher) PublishChange(data map[string]interface{}) {
 	// Convert data to JSON
 	jsonData, err := json.MarshalIndent(data, "", "    ")
 	if err != nil {
-		log.Printf("Error formatting JSON data: %v", err)
+		log.Error("Error formatting JSON data", "error", err)
 		return
 	}
 	// Placeholder for sending the message to Azure Event Hub
-	log.Printf("Sent to Azure Event Hub:\n%s", string(jsonData))
+	log.Info("Sent to Azure Event Hub", "data", string(jsonData))
 }

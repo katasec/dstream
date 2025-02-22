@@ -3,7 +3,6 @@ package azureservicebus
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -15,13 +14,15 @@ func GenTopicName(connectionString string, tableName string) string {
 	dbName, err := extractDatabaseName(connectionString)
 	if err != nil {
 		fmt.Println("The connection string was:" + connectionString)
-		log.Fatal("Error, database name not found in connection string.")
+		log.Error("Database name not found in connection string")
+		os.Exit(1)
 	}
 
 	serverName, err := extractServerName(connectionString)
 	if err != nil {
 		fmt.Println("The connection string was:" + connectionString)
-		log.Fatal("Error, server name not found in connection string.")
+		log.Error("Server name not found in connection string")
+		os.Exit(1)
 	}
 
 	topicName := fmt.Sprintf("%s.%s.%s.events", serverName, dbName, strings.ToLower(tableName))
@@ -81,14 +82,20 @@ func extractServerName(connectionString string) (string, error) {
 func CreateTopicIfNotExists(client *admin.Client, topicName string) error {
 
 	// If topic does not exist, create it
-	log.Printf("Topic %s does not exist. Creating...\n", topicName)
+	log.Info("Creating topic", "topic", topicName)
 	response, err := client.CreateTopic(context.TODO(), topicName, nil)
-	alreadyExists := strings.Contains(err.Error(), "409 Conflict")
+
+	// Check alreadyExists error
+	alreadyExists := false
+	if err != nil {
+		alreadyExists = strings.Contains(err.Error(), "409 Conflict")
+	}
+
 	if alreadyExists {
-		log.Printf("Topic %s, already exists.\n", topicName)
+		log.Debug("Topic already exists", "topic", topicName)
 		return nil
 	} else if err != nil {
-		log.Printf("failed to create topic %s: %v\n", topicName, err)
+		log.Error("Failed to create topic", "topic", topicName, "error", err)
 		// return fmt.Errorf("failed to create topic %s: %w", topicName, err)
 		os.Exit(1)
 	}

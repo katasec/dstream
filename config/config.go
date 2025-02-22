@@ -3,7 +3,7 @@ package config
 import (
 	"bytes"
 	"fmt"
-	"log"
+	"os"
 	"path/filepath"
 	"text/template"
 	"time"
@@ -104,7 +104,8 @@ func NewConfig(fileName ...string) *Config {
 	// Load config file
 	config, err := LoadConfig(configFile)
 	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
+		log.Error("Error loading config", "error", err)
+		os.Exit(1)
 	}
 
 	return config
@@ -117,7 +118,8 @@ func LoadConfig(filePath string) (*Config, error) {
 	// Generate HCL config post text templating
 	hcl, err := generateHCL(filePath)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("Error generating HCL", "error", err)
+		os.Exit(1)
 	}
 
 	// Read config from generated HCL
@@ -158,7 +160,6 @@ func generateHCL(filePath string) (hcl string, err error) {
 	// Get the Sprig function map
 	fmap := sprig.TxtFuncMap()
 
-	// Define template for *.hcl and *.tpl files in the current folder
 	// Ensure the Sprig functions are loaded for processing templates
 	baseName := filepath.Base(filePath)
 	t := template.Must(template.New(baseName).
@@ -186,7 +187,8 @@ func processHCL2(configHCL string, filePath string) Config {
 	var c Config
 	decodeDiags := gohcl.DecodeBody(f.Body, nil, &c)
 	if decodeDiags.HasErrors() {
-		log.Fatal(decodeDiags.Error())
+		log.Error("Error decoding HCL", "error", decodeDiags.Error())
+		os.Exit(1)
 	}
 
 	return c

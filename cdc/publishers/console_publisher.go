@@ -2,7 +2,6 @@ package publishers
 
 import (
 	"encoding/json"
-	"log"
 )
 
 // ConsolePublisher implements ChangePublisher, outputs to console
@@ -22,9 +21,9 @@ func (c *ConsolePublisher) PublishChange(data map[string]interface{}) {
 	// Pretty-print the JSON data
 	jsonData, err := json.MarshalIndent(data, "", "    ")
 	if err != nil {
-		log.Printf("Error formatting JSON data: %v", err)
+		log.Error("Error formatting JSON data", "error", err)
 		return
 	}
 
-	log.Printf("Console Publisher:\n%s", string(jsonData))
+	log.Info("Console Publisher output", "data", string(jsonData))
 }
