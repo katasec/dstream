@@ -215,7 +215,10 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		WHERE TABLE_NAME = @tableName 
 		AND TABLE_SCHEMA = 'dbo'`
 
+	log.Println(strings.Replace(query, "@tableName", "'"+tableName+"'", 1))
+
 	rows, err := db.Query(query, sql.Named("tableName", tableName))
+
 	if err != nil {
 		return nil, err
 	}
