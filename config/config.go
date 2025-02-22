@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"path/filepath"
 	"text/template"
 	"time"
 
@@ -91,9 +92,17 @@ type SourceConfig struct {
 	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
 }
 
-func NewConfig() *Config {
+func NewConfig(fileName ...string) *Config {
+
+	var configFile string
+	if len(fileName) > 0 {
+		configFile = fileName[0]
+	} else {
+		configFile = "dstream.hcl"
+	}
+
 	// Load config file
-	config, err := LoadConfig("dstream.hcl")
+	config, err := LoadConfig(configFile)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
@@ -151,12 +160,13 @@ func generateHCL(filePath string) (hcl string, err error) {
 
 	// Define template for *.hcl and *.tpl files in the current folder
 	// Ensure the Sprig functions are loaded for processing templates
-	t := template.Must(template.New("test").
+	baseName := filepath.Base(filePath)
+	t := template.Must(template.New(baseName).
 		Funcs(fmap).
 		ParseFiles(filePath))
 
 	buf := &bytes.Buffer{}
-	err = t.ExecuteTemplate(buf, filePath, nil)
+	err = t.ExecuteTemplate(buf, baseName, nil)
 	if err != nil {
 		fmt.Printf("Error during template execution: %s", err)
 		return "", err
