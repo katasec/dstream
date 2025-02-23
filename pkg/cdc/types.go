@@ -18,4 +18,10 @@ type ChangeEvent struct {
 	ChangeType ChangeType            `json:"change_type"`
 	Data       map[string]interface{} `json:"data"`
 	Timestamp  string                 `json:"timestamp"`
+	LSN       string                 `json:"lsn"`
+}
+
+// ChangePublisher is an interface for publishing CDC change messages
+type ChangePublisher interface {
+	PublishChange(data map[string]interface{})
 }

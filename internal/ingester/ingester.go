@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"database/sql"
+	"github.com/katasec/dstream/internal/logging"
 	"os"
 	"os/signal"
 	"sync"
@@ -13,6 +14,8 @@ import (
 	"github.com/katasec/dstream/internal/config"
 	"github.com/katasec/dstream/internal/db"
 )
+
+var log = logging.GetLogger()
 
 type Ingester struct {
 	config        *config.Config

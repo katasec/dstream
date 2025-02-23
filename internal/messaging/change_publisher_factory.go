@@ -1,11 +1,11 @@
-package publishers
+package messaging
 
 import (
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/katasec/dstream/internal/azureservicebus"
+	"github.com/katasec/dstream/pkg/cdc"
 )
 
 // ChangePublisherFactory is responsible for creating ChangePublisher instances based on config.
@@ -24,7 +24,7 @@ func NewChangePublisherFactory(outputType string, connectionString string, dbCon
 }
 
 // Create returns a ChangePublisher based on the Output.Type in config.
-func (f *ChangePublisherFactory) Create(tableName string) (ChangePublisher, error) {
+func (f *ChangePublisherFactory) Create(tableName string) (cdc.ChangePublisher, error) {
 	switch strings.ToLower(f.outputType) {
 	case "eventhub":
 		log.Info("Creating EventHub publisher")
@@ -39,7 +39,7 @@ func (f *ChangePublisherFactory) Create(tableName string) (ChangePublisher, erro
 			return nil, errors.New("ServiceBus connection string is required")
 		}
 		// Generate the topic name based on the database and table name
-		topicName := azureservicebus.GenTopicName(f.dbConnectionString, tableName)
+		topicName := GenTopicName(f.dbConnectionString, tableName)
 		log.Debug("Using topic", "name", topicName)
 
 		// Create a new ServiceBusPublisher for the topic

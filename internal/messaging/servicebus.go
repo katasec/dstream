@@ -1,4 +1,4 @@
-package azureservicebus
+package messaging
 
 import (
 	"context"

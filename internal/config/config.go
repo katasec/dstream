@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"fmt"
+	"github.com/katasec/dstream/internal/logging"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -13,6 +14,8 @@ import (
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
+
+var log = logging.GetLogger()
 
 // Config holds the entire configuration as represented in the HCL file
 type Config struct {

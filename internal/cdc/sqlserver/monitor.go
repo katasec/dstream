@@ -12,7 +12,7 @@ import (
 
 	"github.com/katasec/dstream/internal/cdc/utils"
 
-	publishers "github.com/katasec/dstream/internal/publisher"
+	"github.com/katasec/dstream/pkg/cdc"
 )
 
 
@@ -26,7 +26,7 @@ type SqlServerTableMonitor struct {
 	lastLSNs        map[string][]byte
 	lsnMutex        sync.Mutex
 	checkpointMgr   *CheckpointManager
-	publisher       publishers.ChangePublisher
+	publisher       cdc.ChangePublisher
 	columns         []string // Cached column names
 }
 

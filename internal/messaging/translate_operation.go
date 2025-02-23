@@ -1,4 +1,4 @@
-package publishers
+package messaging
 
 // TranslateOperation converts an operation code into a human-readable string.
 func TranslateOperation(operation int) string {
