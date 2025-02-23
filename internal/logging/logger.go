@@ -1,7 +1,8 @@
 package logging
 
 import (
-	"log/slog"
+	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -24,9 +25,7 @@ var (
 	once         sync.Once
 
 	// Environment variable names
-	envLogLevel    = "DSTREAM_LOG_LEVEL"    // debug, info, warn, error
-	envLogHandler  = "DSTREAM_LOG_HANDLER"   // text, json
-	envLogWithTime = "DSTREAM_LOG_WITH_TIME" // true, false
+	envLogLevel = "DSTREAM_LOG_LEVEL" // debug, info, warn, error
 )
 
 // Logger interface defines the logging methods
@@ -37,9 +36,13 @@ type Logger interface {
 	Error(msg string, args ...any)
 }
 
-// slogLogger implements Logger using slog
-type slogLogger struct {
-	logger *slog.Logger
+// stdLogger implements Logger using the standard log package
+type stdLogger struct {
+	logLevel LogLevel
+	debug    *log.Logger
+	info     *log.Logger
+	warn     *log.Logger
+	error    *log.Logger
 }
 
 // Initialize the global logger
@@ -51,30 +54,22 @@ func init() {
 func SetupLogging() {
 	once.Do(func() {
 		// Get log level from environment
-		level := getLogLevel()
+		logLevel := getLogLevel()
 
-		// Get handler type from environment
-		handlerType := strings.ToLower(os.Getenv(envLogHandler))
-		withTime := strings.ToLower(os.Getenv(envLogWithTime)) == "true"
-
-		// Configure handler options
-		opts := &slog.HandlerOptions{
-			Level: slog.Level(level),
-			AddSource: withTime,
-		}
-
-		// Create handler based on type
-		var handler slog.Handler
-		switch handlerType {
-		case "json":
-			handler = slog.NewJSONHandler(os.Stdout, opts)
-		default:
-			handler = slog.NewTextHandler(os.Stdout, opts)
-		}
+		// Create loggers for each level with appropriate prefixes
+		debugLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+		infoLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+		warnLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+		errorLogger := log.New(os.Stderr, "", log.Ldate|log.Ltime)
 
 		// Create logger
-		logger := slog.New(handler)
-		globalLogger = &slogLogger{logger: logger}
+		globalLogger = &stdLogger{
+			logLevel: logLevel,
+			debug:    debugLogger,
+			info:     infoLogger,
+			warn:     warnLogger,
+			error:    errorLogger,
+		}
 	})
 }
 
@@ -98,19 +93,51 @@ func getLogLevel() LogLevel {
 	}
 }
 
-// Implementation of Logger interface for slog
-func (l *slogLogger) Debug(msg string, args ...any) {
-	l.logger.Debug(msg, args...)
+// formatMessage formats the message with any additional arguments
+func formatMessage(msg string, args ...any) string {
+	if len(args) == 0 {
+		return msg
+	}
+
+	// Convert args to key-value pairs
+	pairs := make([]string, 0, len(args)/2)
+	for i := 0; i < len(args); i += 2 {
+		if i+1 < len(args) {
+			pairs = append(pairs, fmt.Sprintf("%v=%v", args[i], args[i+1]))
+		}
+	}
+
+	// If there are key-value pairs, append them to the message
+	if len(pairs) > 0 {
+		return fmt.Sprintf("%s [%s]", msg, strings.Join(pairs, " "))
+	}
+	return msg
 }
 
-func (l *slogLogger) Info(msg string, args ...any) {
-	l.logger.Info(msg, args...)
+// Debug logs a debug message
+func (l *stdLogger) Debug(msg string, args ...any) {
+	if l.logLevel <= LevelDebug {
+		l.debug.Println("[DEBUG]", formatMessage(msg, args...))
+	}
 }
 
-func (l *slogLogger) Warn(msg string, args ...any) {
-	l.logger.Warn(msg, args...)
+// Info logs an info message
+func (l *stdLogger) Info(msg string, args ...any) {
+	if l.logLevel <= LevelInfo {
+		l.info.Println("[INFO]", formatMessage(msg, args...))
+	}
 }
 
-func (l *slogLogger) Error(msg string, args ...any) {
-	l.logger.Error(msg, args...)
+// Warn logs a warning message
+func (l *stdLogger) Warn(msg string, args ...any) {
+	if l.logLevel <= LevelWarn {
+		l.warn.Println("[WARN]", formatMessage(msg, args...))
+	}
+}
+
+// Error logs an error message
+func (l *stdLogger) Error(msg string, args ...any) {
+	if l.logLevel <= LevelError {
+		l.error.Println("[ERROR]", formatMessage(msg, args...))
+	}
 }

@@ -67,7 +67,7 @@ func (s *Server) Start() error {
 	defer cancel()
 
 	// Loop until we have tables to monitor
-	tablesToMonitor := s.getTablestoMonitor()
+	tablesToMonitor := s.getTablesToMonitor()
 
 	if len(tablesToMonitor) == 0 {
 		log.Info("All tables are currently locked, nothing to monitor, exitting.")
@@ -101,22 +101,22 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) getTablestoMonitor() []config.ResolvedTableConfig {
-	tablesToMonitor := []config.ResolvedTableConfig{}
-
-	// Create the locker defined in the config HCL
-	configType := s.config.Ingester.Locks.Type
-	connectionString := s.config.Ingester.Locks.ConnectionString
-	containerName := s.config.Ingester.Locks.ContainerName
+func (s *Server) getTablesToMonitor() []config.ResolvedTableConfig {
 
 	// Get list of table names from config
+	var tablesToMonitor []config.ResolvedTableConfig
 	tableNames := make([]string, len(s.config.Ingester.Tables))
 	for i, table := range s.config.Ingester.Tables {
 		tableNames[i] = table.Name
 	}
 
-	// Check which tables are locked
+	// Create the locker defined in the config file (For e.g. blob locker)
+	configType := s.config.Ingester.Locks.Type
+	connectionString := s.config.Ingester.Locks.ConnectionString
+	containerName := s.config.Ingester.Locks.ContainerName
 	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
+
+	// Pass tableNames to locker factory to see if they are locked
 	lockedTables, err := lockerFactory.GetLockedTables(tableNames)
 	if err != nil {
 		log.Error("Error checking locked tables", "error", err)
@@ -129,7 +129,7 @@ func (s *Server) getTablestoMonitor() []config.ResolvedTableConfig {
 		lockedTableMap[lockedTable] = true
 	}
 
-	// Add tables that aren't locked to our monitoring list
+	// Filter out the locked tables from the list
 	for _, table := range s.config.Ingester.Tables {
 		lockName := table.Name + ".lock"
 		if lockedTableMap[lockName] {
@@ -140,6 +140,7 @@ func (s *Server) getTablestoMonitor() []config.ResolvedTableConfig {
 		tablesToMonitor = append(tablesToMonitor, table)
 	}
 
+	// Return the list of table to monitor
 	return tablesToMonitor
 }
 
