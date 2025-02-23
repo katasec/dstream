@@ -1,5 +1,5 @@
 // distributed_locker.go
-package lockers
+package locking
 
 import (
 	"context"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/katasec/dstream/azureservicebus"
+	"github.com/katasec/dstream/internal/azureservicebus"
 )
 
 // ChangePublisherFactory is responsible for creating ChangePublisher instances based on config.

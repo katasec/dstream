@@ -1,4 +1,4 @@
-package lockers
+package locking
 
 import (
 	"fmt"

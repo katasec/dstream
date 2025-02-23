@@ -7,7 +7,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
-	"github.com/katasec/dstream/azureservicebus"
+	"github.com/katasec/dstream/internal/azureservicebus"
 )
 
 // CheckConfig validates the configuration based on the output type and lock type requirements

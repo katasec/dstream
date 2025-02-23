@@ -8,30 +8,24 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/katasec/dstream/cdc"
-	"github.com/katasec/dstream/cdc/lockers"
-	"github.com/katasec/dstream/config"
-	"github.com/katasec/dstream/db"
+	"github.com/katasec/dstream/internal/cdc/locking"
+	"github.com/katasec/dstream/internal/cdc/service"
+	"github.com/katasec/dstream/internal/config"
+	"github.com/katasec/dstream/internal/db"
 )
 
 type Ingester struct {
 	config        *config.Config
 	dbConn        *sql.DB
-	lockerFactory *lockers.LockerFactory
+	lockerFactory *locking.LockerFactory
 	// cancelFunc    context.CancelFunc
 	wg *sync.WaitGroup
 }
 
 // NewIngester initializes the ingester, loads the configuration, and creates the locker factory
 func NewIngester() *Ingester {
-	// Load config file
-	// config, err := config.LoadConfig("dstream.hcl")
-	// if err != nil {
-	// 	log.Fatalf("Error loading config: %v", err)
-	// }
 
 	config := config.NewConfig()
-
 	config.CheckConfig()
 
 	// Connect to the database
@@ -42,13 +36,13 @@ func NewIngester() *Ingester {
 	}
 
 	// Initialize LeaseDBManager
-	//leaseDB := lockers.NewLeaseDBManager(dbConn)
+	//leaseDB := locking.NewLeaseDBManager(dbConn)
 
 	// Initialize LockerFactory with config and LeaseDBManager
 	configType := config.Ingester.Locks.Type
 	connectionString := config.Ingester.Locks.ConnectionString
 	containerName := config.Ingester.Locks.ContainerName
-	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
+	lockerFactory := locking.NewLockerFactory(configType, connectionString, containerName)
 
 	return &Ingester{
 		config:        config,
@@ -82,22 +76,22 @@ func (i *Ingester) Start() error {
 
 	// Create table monitoring service for those tables
 	locksConfig := i.config.Ingester.Locks
-	lockerFactory := lockers.NewLockerFactory(
+	lockerFactory := locking.NewLockerFactory(
 		locksConfig.Type,
 		locksConfig.ConnectionString,
 		locksConfig.ContainerName,
 	)
-	tableService := cdc.NewTableMonitoringService(i.dbConn, lockerFactory, tablesToMonitor)
+	tableMonitoringService := service.NewTableMonitoringService(i.dbConn, lockerFactory, tablesToMonitor)
 
 	// Start Monitoring
 	go func() {
-		if err := tableService.StartMonitoring(ctx); err != nil {
+		if err := tableMonitoringService.Start(ctx); err != nil {
 			log.Error("Monitoring service error", "error", err)
 		}
 	}()
 
 	// Wait for interrupt signal for graceful shutdown
-	i.handleShutdown(cancel, tableService)
+	i.handleShutdown(cancel, tableMonitoringService)
 	return nil
 }
 
@@ -114,7 +108,7 @@ func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 	configType := i.config.Ingester.Locks.Type
 	connectionString := i.config.Ingester.Locks.ConnectionString
 	containerName := i.config.Ingester.Locks.ContainerName
-	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
+	lockerFactory := locking.NewLockerFactory(configType, connectionString, containerName)
 
 	// Pass tableNames to locker factory to see if they are locked
 	lockedTables, err := lockerFactory.GetLockedTables(tableNames)
@@ -145,7 +139,7 @@ func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 }
 
 // handleShutdown listens for termination signals and ensures graceful shutdown
-func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *cdc.TableMonitoringService) {
+func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *service.TableMonitoringService) {
 	// Capture SIGINT and SIGTERM signals
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)

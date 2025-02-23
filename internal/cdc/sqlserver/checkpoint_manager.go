@@ -1,4 +1,3 @@
-// checkpoint_manager.go
 package sqlserver
 
 import (

@@ -8,7 +8,10 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
+	"github.com/katasec/dstream/internal/logging"
 )
+
+var log = logging.GetLogger()
 
 func GenTopicName(connectionString string, tableName string) string {
 	dbName, err := extractDatabaseName(connectionString)

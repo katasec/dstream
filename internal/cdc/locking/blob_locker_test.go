@@ -1,10 +1,10 @@
-package lockers
+package locking
 
 import (
 	"log"
 	"testing"
 
-	"github.com/katasec/dstream/config"
+	"github.com/katasec/dstream/internal/config"
 )
 
 func TestHello(t *testing.T) {

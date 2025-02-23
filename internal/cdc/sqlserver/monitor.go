@@ -1,4 +1,4 @@
-package cdc
+package sqlserver
 
 import (
 	"context"
@@ -10,9 +10,12 @@ import (
 	"sync"
 	"time"
 
-	publishers "github.com/katasec/dstream/cdc/publishers"
-	"github.com/katasec/dstream/cdc/sqlserver"
+	"github.com/katasec/dstream/internal/cdc/utils"
+
+	publishers "github.com/katasec/dstream/internal/publisher"
 )
+
+
 
 // SqlServerTableMonitor manages SQL Server CDC monitoring for a specific table
 type SqlServerTableMonitor struct {
@@ -22,14 +25,14 @@ type SqlServerTableMonitor struct {
 	maxPollInterval time.Duration
 	lastLSNs        map[string][]byte
 	lsnMutex        sync.Mutex
-	checkpointMgr   *sqlserver.CheckpointManager
+	checkpointMgr   *CheckpointManager
 	publisher       publishers.ChangePublisher
 	columns         []string // Cached column names
 }
 
 // NewSQLServerTableMonitor initializes a new SqlServerTableMonitor
 func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration) *SqlServerTableMonitor {
-	checkpointMgr := sqlserver.NewCheckpointManager(dbConn, tableName)
+	checkpointMgr := NewCheckpointManager(dbConn, tableName)
 
 	// Fetch column names once and store them in the struct
 	columns, err := fetchColumnNames(dbConn, tableName)
@@ -67,7 +70,7 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 	m.lsnMutex.Unlock()
 
 	// Initialize the backoff manager
-	backoff := NewBackoffManager(m.pollInterval, m.maxPollInterval)
+	backoff := utils.NewBackoffManager(m.pollInterval, m.maxPollInterval)
 
 	// Begin monitoring loop
 	for {

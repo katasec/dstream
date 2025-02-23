@@ -1,4 +1,4 @@
-package cdc
+package service
 
 import (
 	"context"
@@ -7,35 +7,39 @@ import (
 	"sync"
 	"time"
 
-	"github.com/katasec/dstream/cdc/lockers"
-	"github.com/katasec/dstream/config"
+	"github.com/katasec/dstream/internal/cdc/locking"
+	"github.com/katasec/dstream/internal/cdc/sqlserver"
+	"github.com/katasec/dstream/internal/config"
+	"github.com/katasec/dstream/internal/logging"
 )
+
+var log = logging.GetLogger()
 
 // TableMonitoringService manages monitoring for each table in the config.
 
 type TableMonitoringService struct {
 	db              *sql.DB
-	lockerFactory   *lockers.LockerFactory
+	lockerFactory   *locking.LockerFactory
 	tablesToMonitor []config.ResolvedTableConfig
 	leaseIDs        map[string]string // Map to store lease IDs for each lock
-	tableLockers    map[string]lockers.DistributedLocker
+	tableLockers    map[string]locking.DistributedLocker
 }
 
-func NewTableMonitoringService(db *sql.DB, lockerFactory *lockers.LockerFactory, tablesToMonitor []config.ResolvedTableConfig) *TableMonitoringService {
+func NewTableMonitoringService(db *sql.DB, lockerFactory *locking.LockerFactory, tablesToMonitor []config.ResolvedTableConfig) *TableMonitoringService {
 	// Initialize the LeaseDBManager
-	//leaseDB := lockers.NewLeaseDBManager(db)
+	//leaseDB := locking.NewLeaseDBManager(db)
 
 	return &TableMonitoringService{
 		db:              db,
 		lockerFactory:   lockerFactory, // Get Locker type from config (for e.g. bloblocker)
 		leaseIDs:        make(map[string]string),
-		tableLockers:    make(map[string]lockers.DistributedLocker),
+		tableLockers:    make(map[string]locking.DistributedLocker),
 		tablesToMonitor: tablesToMonitor,
 	}
 }
 
-// StartMonitoring initializes and starts monitoring for each table in the config.
-func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
+// Start initializes and starts monitoring for each table in the config.
+func (t *TableMonitoringService) Start(ctx context.Context) error {
 	var wg sync.WaitGroup // WaitGroup to ensure goroutines complete
 
 	for _, tableConfig := range t.tablesToMonitor {
@@ -64,7 +68,7 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 		maxPollInterval, _ := tableConfig.GetMaxPollInterval()
 
 		// Initialize SQLServerMonitor for each table with poll intervals and the correct publisher.
-		monitor := NewSQLServerTableMonitor(
+		monitor := sqlserver.NewSQLServerTableMonitor(
 			t.db,
 			tableConfig.Name,
 			pollInterval,
@@ -101,7 +105,7 @@ func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
 	}
 }
 
-func (t *TableMonitoringService) monitorTable(wg *sync.WaitGroup, monitor *SqlServerTableMonitor, tableConfig config.ResolvedTableConfig) {
+func (t *TableMonitoringService) monitorTable(wg *sync.WaitGroup, monitor *sqlserver.SqlServerTableMonitor, tableConfig config.ResolvedTableConfig) {
 	defer wg.Done() // Mark goroutine as done when it completes
 
 	// Create a new context for this table monitor
