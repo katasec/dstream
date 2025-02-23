@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"log"
+
+	"github.com/katasec/dstream/internal/logging"
 )
+
+var log = logging.GetLogger()
 
 // Default checkpoint table name
 const defaultCheckpointTableName = "cdc_offsets"
@@ -50,7 +53,7 @@ func (c *CheckpointManager) InitializeCheckpointTable() error {
 		return fmt.Errorf("failed to create %s table: %w", c.checkpointTable, err)
 	}
 
-	log.Println("Initialized checkpoints table.")
+	log.Info("Initialized checkpoints table")
 	return nil
 }
 
@@ -61,12 +64,12 @@ func (c *CheckpointManager) LoadLastLSN(defaultStartLSN string) ([]byte, error) 
 	err := c.dbConn.QueryRow(query, sql.Named("tableName", c.tableName)).Scan(&lastLSN)
 	if err == sql.ErrNoRows {
 		startLSNBytes, _ := hex.DecodeString(defaultStartLSN)
-		log.Printf("No previous LSN for %s. Initializing with default start LSN.", c.tableName)
+		log.Info("No previous LSN, initializing with default", "table", c.tableName)
 		return startLSNBytes, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to load LSN for %s: %w", c.tableName, err)
 	}
-	log.Printf("Resuming %s from last LSN: %s", c.tableName, hex.EncodeToString(lastLSN))
+	log.Info("Resuming from last LSN", "table", c.tableName, "lsn", hex.EncodeToString(lastLSN))
 	return lastLSN, nil
 }
 
@@ -87,6 +90,6 @@ func (c *CheckpointManager) SaveLastLSN(newLSN []byte) error {
 		return fmt.Errorf("failed to save LSN for %s: %w", c.tableName, err)
 	}
 
-	log.Printf("Saved new LSN for %s: %s", c.tableName, hex.EncodeToString(newLSN))
+	log.Info("Saved new LSN", "table", c.tableName, "lsn", hex.EncodeToString(newLSN))
 	return nil
 }

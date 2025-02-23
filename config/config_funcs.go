@@ -126,9 +126,16 @@ func (c *Config) serviceBusConfigCheck() {
 
 	// Create the ingest queue if it doesn't exist
 	_, err = ingestClient.CreateQueue(context.TODO(), c.Ingester.Queue.Name, nil)
-	if err != nil && !strings.Contains(err.Error(), "QueueAlreadyExists") {
-		log.Error("Failed to create ingest queue", "queue", c.Ingester.Queue.Name, "error", err)
-		os.Exit(1)
+	if err != nil {
+		// If the queue already exists (409 Conflict), that's fine
+		if strings.Contains(err.Error(), "409 Conflict") {
+			log.Info("Ingest queue already exists", "queue", c.Ingester.Queue.Name)
+		} else {
+			log.Error("Failed to create ingest queue", "queue", c.Ingester.Queue.Name, "error", err)
+			os.Exit(1)
+		}
+	} else {
+		log.Info("Created ingest queue", "queue", c.Ingester.Queue.Name)
 	}
 	log.Info("Validated ingest queue", "queue", c.Ingester.Queue.Name)
 }

@@ -17,6 +17,13 @@ const (
 	LevelInfo
 	LevelWarn
 	LevelError
+
+	// ANSI color codes
+	colorReset  = "\033[0m"
+	colorGray   = "\033[38;5;242m" // Debug
+	colorGreen  = "\033[38;5;46m"  // Info
+	colorYellow = "\033[38;5;220m" // Warn
+	colorRed    = "\033[38;5;196m" // Error
 )
 
 var (
@@ -56,7 +63,7 @@ func SetupLogging() {
 		// Get log level from environment
 		logLevel := getLogLevel()
 
-		// Create loggers for each level with appropriate prefixes
+			// Create loggers for each level with appropriate prefixes and colors
 		debugLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 		infoLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 		warnLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
@@ -117,27 +124,27 @@ func formatMessage(msg string, args ...any) string {
 // Debug logs a debug message
 func (l *stdLogger) Debug(msg string, args ...any) {
 	if l.logLevel <= LevelDebug {
-		l.debug.Println("[DEBUG]", formatMessage(msg, args...))
+		l.debug.Printf("%s[DEBUG]%s %s", colorGray, colorReset, formatMessage(msg, args...))
 	}
 }
 
 // Info logs an info message
 func (l *stdLogger) Info(msg string, args ...any) {
 	if l.logLevel <= LevelInfo {
-		l.info.Println("[INFO]", formatMessage(msg, args...))
+		l.info.Printf("%s[INFO]%s %s", colorGreen, colorReset, formatMessage(msg, args...))
 	}
 }
 
 // Warn logs a warning message
 func (l *stdLogger) Warn(msg string, args ...any) {
 	if l.logLevel <= LevelWarn {
-		l.warn.Println("[WARN]", formatMessage(msg, args...))
+		l.warn.Printf("%s[WARN]%s %s", colorYellow, colorReset, formatMessage(msg, args...))
 	}
 }
 
 // Error logs an error message
 func (l *stdLogger) Error(msg string, args ...any) {
 	if l.logLevel <= LevelError {
-		l.error.Println("[ERROR]", formatMessage(msg, args...))
+		l.error.Printf("%s[ERROR]%s %s", colorRed, colorReset, formatMessage(msg, args...))
 	}
 }

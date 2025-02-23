@@ -34,7 +34,7 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 	// Fetch column names once and store them in the struct
 	columns, err := fetchColumnNames(dbConn, tableName)
 	if err != nil {
-		log.Info("Failed to fetch column names for table %s: %v", tableName, err)
+		log.Info("Failed to fetch column names", "table", tableName, "error", err)
 		os.Exit(1)
 	}
 
@@ -74,21 +74,21 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 		// Check for context cancellation
 		select {
 		case <-ctx.Done():
-			log.Info("Stopping monitoring for table %s due to context cancellation", m.tableName)
+			log.Info("Stopping monitoring due to context cancellation", "table", m.tableName)
 			return ctx.Err()
 		default:
 		}
-		log.Info("Polling changes for table: %s", m.tableName)
+		log.Info("Polling changes for table", "table", m.tableName, "lsn", hex.EncodeToString(m.lastLSNs[m.tableName]))
 		changes, newLSN, err := m.fetchCDCChanges(m.lastLSNs[m.tableName])
 
 		if err != nil {
-			log.Info("Error fetching changes for %s: %v", m.tableName, err)
+			log.Info("Error fetching changes", "table", m.tableName, "error", err)
 			time.Sleep(backoff.GetInterval()) // Wait with current interval on error
 			continue
 		}
 
 		if len(changes) > 0 {
-			log.Info("Changes detected for table %s; publishing...", m.tableName)
+			log.Info("Changes detected, publishing...", "table", m.tableName)
 
 			// Publish detected changes
 			//consolePublisher := &publishers.ConsolePublisher{}
@@ -110,7 +110,7 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 		} else {
 			// If no changes, increase the polling interval (backoff)
 			backoff.IncreaseInterval()
-			log.Info("No changes found for table %s. Next poll in %s", m.tableName, backoff.GetInterval())
+			log.Info("No changes found", "table", m.tableName, "nextPollIn", backoff.GetInterval())
 		}
 
 		time.Sleep(backoff.GetInterval())
@@ -119,7 +119,7 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 
 // fetchCDCChanges queries CDC changes and returns relevant events as a slice of maps
 func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
-	log.Info("Polling changes for table: %s with last LSN: %x", monitor.tableName, lastLSN)
+	log.Info("Polling changes", "table", monitor.tableName, "lsn", hex.EncodeToString(lastLSN))
 
 	// Use cached column names
 	columnList := "ct.__$start_lsn, ct.__$operation"
@@ -231,9 +231,9 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		if err := rows.Scan(&columnName); err != nil {
 			return nil, err
 		}
-		log.Info("Found column: %s", columnName)
+		log.Info("Found column", "name", columnName)
 		columns = append(columns, columnName)
 	}
-	log.Info("Total columns found for table %s: %v", tableName, columns)
+	log.Info("Total columns found", "table", tableName, "columns", columns)
 	return columns, rows.Err()
 }

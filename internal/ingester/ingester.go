@@ -1,4 +1,4 @@
-package server
+package ingester
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/katasec/dstream/db"
 )
 
-type Server struct {
+type Ingester struct {
 	config        *config.Config
 	dbConn        *sql.DB
 	lockerFactory *lockers.LockerFactory
@@ -22,8 +22,8 @@ type Server struct {
 	wg *sync.WaitGroup
 }
 
-// NewServer initializes the server, loads the configuration, and creates the locker factory
-func NewServer() *Server {
+// NewIngester initializes the ingester, loads the configuration, and creates the locker factory
+func NewIngester() *Ingester {
 	// Load config file
 	// config, err := config.LoadConfig("dstream.hcl")
 	// if err != nil {
@@ -50,7 +50,7 @@ func NewServer() *Server {
 	containerName := config.Ingester.Locks.ContainerName
 	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
 
-	return &Server{
+	return &Ingester{
 		config:        config,
 		dbConn:        dbConn,
 		lockerFactory: lockerFactory,
@@ -59,15 +59,15 @@ func NewServer() *Server {
 }
 
 // Start initializes the TableMonitoringService and begins monitoring each table in the config
-func (s *Server) Start() error {
-	defer s.dbConn.Close()
+func (i *Ingester) Start() error {
+	defer i.dbConn.Close()
 
 	// Create a new context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Loop until we have tables to monitor
-	tablesToMonitor := s.getTablesToMonitor()
+	tablesToMonitor := i.getTablesToMonitor()
 
 	if len(tablesToMonitor) == 0 {
 		log.Info("All tables are currently locked, nothing to monitor, exitting.")
@@ -81,13 +81,13 @@ func (s *Server) Start() error {
 	}
 
 	// Create table monitoring service for those tables
-	locksConfig := s.config.Ingester.Locks
+	locksConfig := i.config.Ingester.Locks
 	lockerFactory := lockers.NewLockerFactory(
 		locksConfig.Type,
 		locksConfig.ConnectionString,
 		locksConfig.ContainerName,
 	)
-	tableService := cdc.NewTableMonitoringService(s.dbConn, lockerFactory, tablesToMonitor)
+	tableService := cdc.NewTableMonitoringService(i.dbConn, lockerFactory, tablesToMonitor)
 
 	// Start Monitoring
 	go func() {
@@ -97,23 +97,23 @@ func (s *Server) Start() error {
 	}()
 
 	// Wait for interrupt signal for graceful shutdown
-	s.handleShutdown(cancel, tableService)
+	i.handleShutdown(cancel, tableService)
 	return nil
 }
 
-func (s *Server) getTablesToMonitor() []config.ResolvedTableConfig {
+func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 
 	// Get list of table names from config
 	var tablesToMonitor []config.ResolvedTableConfig
-	tableNames := make([]string, len(s.config.Ingester.Tables))
-	for i, table := range s.config.Ingester.Tables {
+	tableNames := make([]string, len(i.config.Ingester.Tables))
+	for i, table := range i.config.Ingester.Tables {
 		tableNames[i] = table.Name
 	}
 
 	// Create the locker defined in the config file (For e.g. blob locker)
-	configType := s.config.Ingester.Locks.Type
-	connectionString := s.config.Ingester.Locks.ConnectionString
-	containerName := s.config.Ingester.Locks.ContainerName
+	configType := i.config.Ingester.Locks.Type
+	connectionString := i.config.Ingester.Locks.ConnectionString
+	containerName := i.config.Ingester.Locks.ContainerName
 	lockerFactory := lockers.NewLockerFactory(configType, connectionString, containerName)
 
 	// Pass tableNames to locker factory to see if they are locked
@@ -130,7 +130,7 @@ func (s *Server) getTablesToMonitor() []config.ResolvedTableConfig {
 	}
 
 	// Filter out the locked tables from the list
-	for _, table := range s.config.Ingester.Tables {
+	for _, table := range i.config.Ingester.Tables {
 		lockName := table.Name + ".lock"
 		if lockedTableMap[lockName] {
 			log.Info("Table is locked and being monitored by another process", "table", table.Name)
@@ -145,7 +145,7 @@ func (s *Server) getTablesToMonitor() []config.ResolvedTableConfig {
 }
 
 // handleShutdown listens for termination signals and ensures graceful shutdown
-func (s *Server) handleShutdown(cancel context.CancelFunc, tableService *cdc.TableMonitoringService) {
+func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *cdc.TableMonitoringService) {
 	// Capture SIGINT and SIGTERM signals
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)

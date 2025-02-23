@@ -1,4 +1,4 @@
-package server
+package ingester
 
 import (
 	"github.com/katasec/dstream/internal/logging"

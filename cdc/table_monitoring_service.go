@@ -45,17 +45,17 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 		lockName := tableConfig.Name + ".lock"
 		tableLocker, err := t.lockerFactory.CreateLocker(lockName)
 		if err != nil {
-			log.Info("Failed to create locker for table %s: %v", tableConfig.Name, err)
+			log.Info("Failed to create locker", "table", tableConfig.Name, "error", err)
 			wg.Done()
 			continue
 		} else {
 			_, err := tableLocker.AcquireLock(ctx, lockName)
 			if err != nil {
-				log.Info("Could not acquire lock on table: %s, exitting.", lockName)
+				log.Info("Could not acquire lock on table, exitting", "table", lockName)
 				log.Info(err.Error())
 				os.Exit(1)
 			}
-			log.Info("Saving table locker in memory for:", lockName)
+			log.Info("Saving table locker in memory", "table", lockName)
 			t.tableLockers[lockName] = tableLocker
 		}
 
@@ -86,7 +86,7 @@ func (t *TableMonitoringService) StartMonitoring(ctx context.Context) error {
 
 func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
 	for _, table := range t.tablesToMonitor {
-		log.Info("Attempting to release lock for:%s \n", table.Name)
+		log.Info("Attempting to release lock", "table", table.Name)
 		lockName := table.Name + ".lock"
 		myLocker := t.tableLockers[lockName]
 
@@ -96,7 +96,7 @@ func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
 				log.Info(err.Error())
 			}
 		} else {
-			log.Info("No lock found for %s\n", table.Name)
+			log.Info("No lock found", "table", table.Name)
 		}
 	}
 }
@@ -107,11 +107,11 @@ func (t *TableMonitoringService) monitorTable(wg *sync.WaitGroup, monitor *SqlSe
 	// Create a new context for this table monitor
 	ctx := context.Background()
 
-	log.Info("Starting monitor for table: %s", tableConfig.Name)
+	log.Info("Starting monitor", "table", tableConfig.Name)
 	if err := monitor.MonitorTable(ctx); err != nil {
-		log.Info("Error monitoring table %s: %v", tableConfig.Name, err)
+		log.Info("Error monitoring table", "table", tableConfig.Name, "error", err)
 	} else {
-		log.Info("Monitoring completed for table %s", tableConfig.Name)
+		log.Info("Monitoring completed", "table", tableConfig.Name)
 	}
 
 }
