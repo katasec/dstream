@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/katasec/dstream/pkg/cdc"
+	"github.com/katasec/dstream/pkg/messaging"
 )
 
 // ChangePublisherFactory is responsible for creating ChangePublisher instances based on config.
@@ -23,8 +23,8 @@ func NewChangePublisherFactory(outputType string, connectionString string, dbCon
 	}
 }
 
-// Create returns a ChangePublisher based on the Output.Type in config.
-func (f *ChangePublisherFactory) Create(tableName string) (cdc.ChangePublisher, error) {
+// Create returns a Publisher based on the Output.Type in config.
+func (f *ChangePublisherFactory) Create(tableName string) (messaging.Publisher, error) {
 	switch strings.ToLower(f.outputType) {
 	case "eventhub":
 		log.Info("Creating EventHub publisher")

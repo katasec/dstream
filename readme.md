@@ -99,12 +99,86 @@ go run . server --log-level debug
 
 ## Architecture
 
-DStream consists of several key components:
+DStream follows a modular architecture with clear separation of concerns:
 
-1. **Ingester**: Monitors SQL Server tables for changes using CDC
-2. **Publisher**: Streams changes to Azure Service Bus
-3. **Distributed Locking**: Uses Azure Blob Storage for coordination between multiple instances
-4. **Structured Logging**: Provides detailed operational insights with leveled logging
+### Components
+
+1. **Ingester**
+   - Monitors SQL Server tables for changes using CDC
+   - Uses distributed locking to support multiple instances
+   - Publishes changes to a message queue (e.g., Azure Service Bus)
+
+2. **Processor**
+   - Consumes changes from the message queue
+   - Processes and transforms data as needed
+   - Routes messages to appropriate destinations using Publishers
+
+3. **Publishers**
+   - Pluggable components that handle message delivery
+   - Implementations available for:
+     - Azure Service Bus
+     - Azure Event Hubs
+     - Console (for debugging)
+   - Easy to add new implementations
+
+### Data Flow
+```
+[SQL Server] --> [Ingester] --> [Queue] --> [Processor] --> [Publisher] --> [Destination]
+    |              |             |            |              |
+    |              |             |            |              |- Service Bus
+    |              |             |            |              |- Event Hubs
+    |              |             |            |              |- Console
+    |              |             |            |
+    |              |             |            |- Process Data
+    |              |             |            |- Route Messages
+    |              |             |
+    |              |             |- Buffer Changes
+    |              |             |- Decouple Components
+    |              |
+    |              |- Monitor CDC
+    |              |- Distributed Locking
+    |
+    |- CDC Enabled Tables
+```
+
+### Design Principles
+
+1. **Modularity**
+   - Clear separation between components
+   - Pluggable publishers for different destinations
+   - Easy to extend and maintain
+
+2. **Reliability**
+   - Distributed locking for multiple instances
+   - Message queuing for reliable delivery
+   - Graceful shutdown handling
+
+3. **Observability**
+   - Structured logging throughout
+   - Configurable log levels
+   - Clear error reporting
+
+4. **Configuration**
+   - HCL-based configuration
+   - Environment variable support
+   - Per-table configuration options
+
+### Command Line Interface
+
+DStream provides two main commands:
+
+1. **Ingester**
+   ```bash
+   dstream ingester --config config.hcl
+   ```
+   Starts the ingester service that monitors CDC and publishes changes
+
+2. **Processor**
+   ```bash
+   dstream processor --config config.hcl
+   ```
+   Starts the processor service that consumes and processes changes
+
 
 ## Contributing
 

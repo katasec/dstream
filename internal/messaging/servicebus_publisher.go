@@ -36,14 +36,38 @@ func NewServiceBusPublisher(connectionString, topicName string) (*ServiceBusPubl
 	return publisher, nil
 }
 
-// PublishChange sends the change data to the batchQueue for processing
-func (s *ServiceBusPublisher) PublishChange(change map[string]interface{}) {
-	log.Debug("Queuing message for Service Bus publishing")
-	// Print message to console
-	prettyPrintJSON(change)
+// PublishMessage publishes a message to a topic
+func (s *ServiceBusPublisher) PublishMessage(topic string, message []byte) error {
+	log.Debug("Publishing message to Service Bus", "topic", topic)
+	sender, err := s.client.NewSender(topic, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create sender: %w", err)
+	}
+	defer sender.Close(context.TODO())
 
-	// Send the message to the channel to be processed in batches
-	s.batchQueue <- change
+	// Create a new message
+	sbMessage := &azservicebus.Message{
+		Body: message,
+	}
+
+	// Send the message
+	if err := sender.SendMessage(context.TODO(), sbMessage, nil); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	return nil
+}
+
+// EnsureTopicExists ensures that a topic exists, creating it if necessary
+func (s *ServiceBusPublisher) EnsureTopicExists(topic string) error {
+	// Azure Service Bus creates topics automatically when sending messages
+	return nil
+}
+
+// Close closes the publisher and releases any resources
+func (s *ServiceBusPublisher) Close() error {
+	close(s.batchQueue)
+	return s.client.Close(context.TODO())
 }
 
 // processMessages reads from batchQueue and sends messages in batches

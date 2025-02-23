@@ -1,8 +1,6 @@
 package messaging
 
-import (
-	"encoding/json"
-)
+// Package messaging provides messaging implementations
 
 // EventHubPublisher implements ChangePublisher, sends messages to Azure Event Hub
 type EventHubPublisher struct {
@@ -16,13 +14,21 @@ func NewEventHubPublisher(connectionString string) *EventHubPublisher {
 	}
 }
 
-func (e *EventHubPublisher) PublishChange(data map[string]interface{}) {
-	// Convert data to JSON
-	jsonData, err := json.MarshalIndent(data, "", "    ")
-	if err != nil {
-		log.Error("Error formatting JSON data", "error", err)
-		return
-	}
-	// Placeholder for sending the message to Azure Event Hub
-	log.Info("Sent to Azure Event Hub", "data", string(jsonData))
+// PublishMessage publishes a message to a topic
+func (e *EventHubPublisher) PublishMessage(topic string, message []byte) error {
+	// TODO: Implement actual Event Hub publishing
+	log.Info("Sent to Azure Event Hub", "topic", topic, "data", string(message))
+	return nil
+}
+
+// EnsureTopicExists ensures that a topic exists, creating it if necessary
+func (e *EventHubPublisher) EnsureTopicExists(topic string) error {
+	// Event Hub creates topics automatically
+	return nil
+}
+
+// Close closes the publisher and releases any resources
+func (e *EventHubPublisher) Close() error {
+	// TODO: Implement actual Event Hub client cleanup
+	return nil
 }

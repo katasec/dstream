@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"bytes"
 	"encoding/json"
 )
 
@@ -12,18 +13,26 @@ func NewConsolePublisher() *ConsolePublisher {
 	return &ConsolePublisher{}
 }
 
-func (c *ConsolePublisher) PublishChange(data map[string]interface{}) {
-	// Replace the operation code with a human-readable action
-	if opCode, ok := data["Operation"].(int); ok {
-		data["Operation"] = TranslateOperation(opCode)
+// PublishMessage publishes a message to a topic
+func (c *ConsolePublisher) PublishMessage(topic string, message []byte) error {
+	// Try to pretty-print if it's JSON
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, message, "", "    "); err == nil {
+		log.Info("Console Publisher output", "topic", topic, "data", prettyJSON.String())
+	} else {
+		log.Info("Console Publisher output", "topic", topic, "data", string(message))
 	}
+	return nil
+}
 
-	// Pretty-print the JSON data
-	jsonData, err := json.MarshalIndent(data, "", "    ")
-	if err != nil {
-		log.Error("Error formatting JSON data", "error", err)
-		return
-	}
+// EnsureTopicExists ensures that a topic exists, creating it if necessary
+func (c *ConsolePublisher) EnsureTopicExists(topic string) error {
+	// Console publisher doesn't need topics
+	return nil
+}
 
-	log.Info("Console Publisher output", "data", string(jsonData))
+// Close closes the publisher and releases any resources
+func (c *ConsolePublisher) Close() error {
+	// Nothing to close for console publisher
+	return nil
 }
