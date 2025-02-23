@@ -1,90 +1,110 @@
-# IMPORTANT
-
-Please note that this is currently a very early POC - DO NOT USE IN PRODUCTION.
-
-
 # DStream
 
-**DStream**  is a lightweight, proof-of-concept (POC) application designed to monitor Microsoft SQL Server tables enabled with Change Data Capture (CDC) for updates. When changes are detected, **DStream**  streams the data to an Azure Event Hub for further processing, analytics, or event-driven applications. As a single-binary application with no external dependencies, **DStream**  is easy to install, deploy, and containerize, making it highly suitable for cloud-native and scalable environments.
-
-This project showcases the feasibility of capturing and streaming real-time data changes, making it ideal for applications that require up-to-date insights or need to respond to business events as they occur.
+**DStream** is a robust application designed to monitor Microsoft SQL Server tables enabled with Change Data Capture (CDC) for updates. When changes are detected, DStream streams the data to Azure Service Bus for further processing, analytics, or event-driven applications. As a single-binary application with minimal external dependencies, DStream is easy to install, deploy, and containerize, making it highly suitable for cloud-native and scalable environments.
 
 ## Key Features
 
-- **CDC Monitoring**: Tracks changes (inserts, updates, deletes) on MS SQL Server tables enabled with CDC.
-- **Data Streaming**: Sends detected changes to an Azure Event Hub, enabling real-time data processing in downstream applications.
-- **Flexible Configuration**: Easily configure target tables, polling intervals, and Event Hub connection settings. Features adaptive backoff for table monitoring, adjusting the polling frequency based on update rates to optimize performance and *reduce overhead on the monitored database server*.
-
-## Use Cases
-
-- **Event-Driven Architectures**: Use DStream to trigger downstream services when specific changes occur in the database.
-- **Real-Time Analytics**: Stream data changes to analytics platforms for insights as events happen.
-- **Data Replication**: Synchronize data across systems by streaming changes to other applications or services.
-- **Business Monitoring**: Detect and respond to key business events in real time.
+- **CDC Monitoring**: Tracks changes (inserts, updates, deletes) on MS SQL Server tables enabled with CDC
+- **Data Streaming**: Streams detected changes to Azure Service Bus, enabling real-time data processing
+- **Distributed Locking**: Uses Azure Blob Storage for distributed locking, ensuring reliable operation in multi-instance deployments
+- **Flexible Configuration**: HCL-based configuration with environment variable support for secure credential management
+- **Structured Logging**: Built-in structured logging with configurable log levels
+- **Adaptive Polling**: Features adaptive backoff for table monitoring, adjusting polling frequency based on update rates
 
 ## Requirements
 
 - **MS SQL Server** with CDC enabled on target tables
-- **Azure Event Hub** for streaming data output
+- **Azure Service Bus** for message streaming
+- **Azure Blob Storage** for distributed locking
 - **Go** (latest version recommended)
 
 ## Installation
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/dstream.git
+   git clone https://github.com/katasec/dstream.git
    cd dstream
+   ```
 
-2. **Configure environment variables**: Ensure that you have set up the necessary environment variables, such as the connection string for SQL Server and Azure Event Hub.
+2. **Install dependencies**:
+   ```bash
+   go mod tidy
+   ```
 
-3. **Install dependencies:**
-```bash
-go mod tidy
-```
+3. **Configure environment variables**:
+   ```bash
+   export DSTREAM_DB_CONNECTION_STRING="sqlserver://user:pass@localhost:1433?database=TestDB"
+   export DSTREAM_INGEST_CONNECTION_STRING="your-azure-service-bus-connection-string"
+   export DSTREAM_BLOB_CONNECTION_STRING="your-azure-blob-storage-connection-string"
+   export DSTREAM_PUBLISHER_CONNECTION_STRING="your-azure-service-bus-connection-string"
+   export DSTREAM_LOG_LEVEL="debug"  # Optional, defaults to info
+   ```
 
 ## Configuration
-In the config.hcl file, specify your MS SQL Server connection details, target tables, polling intervals, and Azure Event Hub settings.
 
-Example `config.hcl`:
+DStream uses HCL for configuration. Here's an example `dstream.hcl`:
 
 ```hcl
-db_type = "sqlserver"
-db_connection_string = "sqlserver://<USERNAME>:<PASSWORD>@<SERVER_NAME>:1433?database=<DATABASE_NAME>"
+ingester {
+    db_type = "sqlserver"
+    db_connection_string = "{{ env \"DSTREAM_DB_CONNECTION_STRING\" }}"
 
-output {
-    type = "console"
+    poll_interval_defaults {
+        poll_interval = "5s"
+        max_poll_interval = "2m"
+    }
+
+    topic {
+        name = "ingest-topic"
+        connection_string = "{{ env \"DSTREAM_INGEST_CONNECTION_STRING\" }}"
+    }
+
+    locks {
+        type = "azure_blob"
+        connection_string = "{{ env \"DSTREAM_BLOB_CONNECTION_STRING\" }}"
+        container_name = "locks"
+    }
+
+    tables = ["Persons"]
+
+    tables_overrides {
+        overrides {
+            table_name = "Persons"
+            poll_interval = "5s"
+            max_poll_interval = "10m"
+        }
+    }
 }
 
-tables {
-    name = "Persons"
-    poll_interval = "5s"
-    max_poll_interval = "1m"
-}
+publisher {
+    source {
+        type = "azure_service_bus"
+        connection_string = "{{ env \"DSTREAM_PUBLISHER_CONNECTION_STRING\" }}"
+    }
 
-tables {
-    name = "Cars"
-    poll_interval = "10s"
-    max_poll_interval = "2m"
+    output {
+        type = "azure_service_bus"
+        connection_string = "{{ env \"DSTREAM_PUBLISHER_CONNECTION_STRING\" }}"
+    }
 }
 ```
 
 ## Usage
 
-To start the application, run:
+To start the application:
 
 ```bash
-go run main.go
+go run . server --log-level debug
 ```
 
-## Logging
+## Architecture
 
-DStream uses console logging by default. Logging levels and formats can be customized to suit your development or production needs.
+DStream consists of several key components:
 
-## Future Enhancements
-
-- **Multi-Database Support:** Extend monitoring capabilities to other databases (e.g., PostgreSQL, MySQL).
-- **Output Sinks:** Support additional output types beyond Azure Event Hub (e.g., Kafka, AWS Kinesis, custom webhooks).
-- **Dynamic Configuration:** Enable on-the-fly configuration updates for table and output settings.
+1. **Ingester**: Monitors SQL Server tables for changes using CDC
+2. **Publisher**: Streams changes to Azure Service Bus
+3. **Distributed Locking**: Uses Azure Blob Storage for coordination between multiple instances
+4. **Structured Logging**: Provides detailed operational insights with leveled logging
 
 ## Contributing
 
