@@ -41,8 +41,8 @@ func (c *Config) CheckConfig() {
 	}
 
 	// Validate Ingestion connection string
-	if c.Ingester.Topic.ConnectionString == "" {
-		log.Error("Ingester Topic connection string required for ingestion")
+	if c.Ingester.Queue.ConnectionString == "" {
+		log.Error("Ingester queue connection string required for ingestion")
 		os.Exit(1)
 	}
 
@@ -115,4 +115,20 @@ func (c *Config) serviceBusConfigCheck() {
 			os.Exit(1)
 		}
 	}
+
+	// Create a Service Bus admin client for ingester queue
+	ingestClient, err := admin.NewClientFromConnectionString(c.Ingester.Queue.ConnectionString, nil)
+	if err != nil {
+		log.Debug("Using connection string", "connectionString", c.Ingester.Queue.ConnectionString)
+		log.Error("Failed to create Service Bus client for ingester", "error", err)
+		os.Exit(1)
+	}
+
+	// Create the ingest queue if it doesn't exist
+	_, err = ingestClient.CreateQueue(context.TODO(), c.Ingester.Queue.Name, nil)
+	if err != nil && !strings.Contains(err.Error(), "QueueAlreadyExists") {
+		log.Error("Failed to create ingest queue", "queue", c.Ingester.Queue.Name, "error", err)
+		os.Exit(1)
+	}
+	log.Info("Validated ingest queue", "queue", c.Ingester.Queue.Name)
 }

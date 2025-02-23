@@ -24,7 +24,7 @@ type Ingester struct {
 	DBType               string              `hcl:"db_type,attr"`
 	DBConnectionString   string              `hcl:"db_connection_string,attr"`
 	PollIntervalDefaults PollInterval        `hcl:"poll_interval_defaults,block"`
-	Topic                TopicConfig         `hcl:"topic,block"`
+	Queue                QueueConfig         `hcl:"queue,block"`
 	Locks                LockConfig          `hcl:"locks,block"`
 	RawTables            []string            `hcl:"tables,attr"`
 	TablesOverrides      TableOverridesBlock `hcl:"tables_overrides,block"`
@@ -48,7 +48,7 @@ func (t *ResolvedTableConfig) GetMaxPollInterval() (time.Duration, error) {
 	return time.ParseDuration(t.MaxPollInterval)
 }
 
-type TopicConfig struct {
+type QueueConfig struct {
 	Name             string `hcl:"name,attr"`
 	ConnectionString string `hcl:"connection_string,attr"`
 }
