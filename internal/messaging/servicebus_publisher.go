@@ -11,6 +11,7 @@ import (
 
 type ServiceBusPublisher struct {
 	client     *azservicebus.Client
+	sender     *azservicebus.Sender
 	entityName string // Can be either a topic or queue name
 	isQueue    bool   // True if publishing to a queue, false for topic
 	batchSize  int
@@ -25,8 +26,16 @@ func NewServiceBusPublisher(connectionString, entityName string, isQueue bool) (
 		return nil, fmt.Errorf("failed to create Service Bus client: %w", err)
 	}
 
+	// Create a sender for the entity
+	sender, err := client.NewSender(entityName, nil)
+	if err != nil {
+		client.Close(context.Background())
+		return nil, fmt.Errorf("failed to create sender: %w", err)
+	}
+
 	publisher := &ServiceBusPublisher{
 		client:     client,
+		sender:     sender,
 		entityName: entityName,
 		isQueue:    isQueue,
 		batchSize:  10,                                     // Batch size for messages to send
@@ -41,19 +50,17 @@ func NewServiceBusPublisher(connectionString, entityName string, isQueue bool) (
 // PublishMessage publishes a message to a topic or queue
 func (s *ServiceBusPublisher) PublishMessage(entityName string, message []byte) error {
 	log.Debug("Publishing message to Service Bus", "entity", s.entityName, "isQueue", s.isQueue)
-	sender, err := s.client.NewSender(s.entityName, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create sender: %w", err)
-	}
-	defer sender.Close(context.TODO())
 
 	// Create a new message
 	sbMessage := &azservicebus.Message{
 		Body: message,
 	}
 
-	// Send the message
-	if err := sender.SendMessage(context.TODO(), sbMessage, nil); err != nil {
+	// Send the message using the existing sender
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := s.sender.SendMessage(ctx, sbMessage, nil); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
@@ -69,7 +76,8 @@ func (s *ServiceBusPublisher) EnsureEntityExists(entityName string) error {
 // Close closes the publisher and releases any resources
 func (s *ServiceBusPublisher) Close() error {
 	close(s.batchQueue)
-	return s.client.Close(context.TODO())
+	s.sender.Close(context.Background())
+	return s.client.Close(context.Background())
 }
 
 // processMessages reads from batchQueue and sends messages in batches
@@ -102,12 +110,16 @@ func (s *ServiceBusPublisher) processMessages() {
 // sendBatch sends a batch of messages to the Service Bus topic
 func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
 	log.Info("Sending batch to Service Bus", "batchSize", len(batch), "entityName", s.entityName)
-	sender, err := s.client.NewSender(s.entityName, nil)
+
+	// Create a batch for all messages
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	msgBatch, err := s.sender.NewMessageBatch(ctx, nil)
 	if err != nil {
-		log.Error("Failed to create Service Bus sender", "error", err)
+		log.Error("Failed to create message batch", "error", err)
 		return
 	}
-	defer sender.Close(context.Background())
 
 	for _, change := range batch {
 		jsonData, err := json.Marshal(change)
@@ -117,15 +129,38 @@ func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
 		}
 
 		message := &azservicebus.Message{Body: jsonData}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := sender.SendMessage(ctx, message, nil); err != nil {
-			log.Error("Failed to send message to Service Bus", "error", err, "data", string(jsonData))
-			continue
+		if err := msgBatch.AddMessage(message, nil); err != nil {
+			if err == azservicebus.ErrMessageTooLarge {
+				// Send current batch and create a new one
+				if err := s.sender.SendMessageBatch(ctx, msgBatch, nil); err != nil {
+					log.Error("Failed to send message batch", "error", err)
+					return
+				}
+				// Create new batch for remaining messages
+				msgBatch, err = s.sender.NewMessageBatch(ctx, nil)
+				if err != nil {
+					log.Error("Failed to create new message batch", "error", err)
+					return
+				}
+				// Try to add the message to the new batch
+				if err := msgBatch.AddMessage(message, nil); err != nil {
+					log.Error("Message too large for empty batch", "error", err)
+					continue
+				}
+			} else {
+				log.Error("Failed to add message to batch", "error", err)
+				continue
+			}
 		}
-		log.Info("Sent message to Service Bus", "size", len(jsonData))
 	}
+
+	// Send any remaining messages in the batch
+	if err := s.sender.SendMessageBatch(ctx, msgBatch, nil); err != nil {
+		log.Error("Failed to send final message batch", "error", err)
+		return
+	}
+
+	log.Info("Successfully sent all messages to Service Bus", "totalSize", len(batch))
 }
 
 // prettyPrintJSON prints JSON in an indented format to the console
