@@ -54,8 +54,9 @@ ingester {
         max_poll_interval = "2m"
     }
 
-    topic {
-        name = "ingest-topic"
+    queue {
+        type = "servicebus"
+        name = "ingest-queue"
         connection_string = "{{ env \"DSTREAM_INGEST_CONNECTION_STRING\" }}"
     }
 

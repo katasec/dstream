@@ -25,9 +25,9 @@ func (c *ConsolePublisher) PublishMessage(topic string, message []byte) error {
 	return nil
 }
 
-// EnsureTopicExists ensures that a topic exists, creating it if necessary
-func (c *ConsolePublisher) EnsureTopicExists(topic string) error {
-	// Console publisher doesn't need topics
+// EnsureEntityExists ensures that a topic or queue exists, creating it if necessary
+func (c *ConsolePublisher) EnsureEntityExists(entityName string) error {
+	// Console publisher doesn't need entities
 	return nil
 }
 

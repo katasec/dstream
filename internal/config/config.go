@@ -36,9 +36,11 @@ type Ingester struct {
 }
 
 type ResolvedTableConfig struct {
-	Name            string
-	PollInterval    string
-	MaxPollInterval string
+	Name              string
+	PollInterval      string
+	MaxPollInterval   string
+	DBConnectionString string
+	Output            OutputConfig
 }
 
 // GetPollInterval returns the PollInterval as a time.Duration
@@ -52,8 +54,9 @@ func (t *ResolvedTableConfig) GetMaxPollInterval() (time.Duration, error) {
 }
 
 type QueueConfig struct {
-	Name             string `hcl:"name,attr"`
-	ConnectionString string `hcl:"connection_string,attr"`
+	Type             string `hcl:"type,attr"`              // Type of queue (servicebus, eventhub)
+	Name             string `hcl:"name,attr"`              // Name of the queue
+	ConnectionString string `hcl:"connection_string,attr"` // Connection string for the queue
 }
 
 // LockConfig represents the configuration for distributed locking
@@ -132,9 +135,11 @@ func LoadConfig(filePath string) (*Config, error) {
 	resolvedTables := []ResolvedTableConfig{}
 	for _, tableName := range config.Ingester.RawTables {
 		resolvedTable := ResolvedTableConfig{
-			Name:            tableName,
-			PollInterval:    config.Ingester.PollIntervalDefaults.PollInterval,
-			MaxPollInterval: config.Ingester.PollIntervalDefaults.MaxPollInterval,
+			Name:              tableName,
+			PollInterval:      config.Ingester.PollIntervalDefaults.PollInterval,
+			MaxPollInterval:   config.Ingester.PollIntervalDefaults.MaxPollInterval,
+			DBConnectionString: config.Ingester.DBConnectionString,
+			Output:            config.Publisher.Output,
 		}
 
 		// Check for overrides

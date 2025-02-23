@@ -11,13 +11,14 @@ import (
 
 type ServiceBusPublisher struct {
 	client     *azservicebus.Client
-	topicName  string
+	entityName string // Can be either a topic or queue name
+	isQueue    bool   // True if publishing to a queue, false for topic
 	batchSize  int
 	batchQueue chan map[string]interface{}
 }
 
-// NewServiceBusPublisher creates a new ServiceBusPublisher with the provided connection string and topic name
-func NewServiceBusPublisher(connectionString, topicName string) (*ServiceBusPublisher, error) {
+// NewServiceBusPublisher creates a new ServiceBusPublisher with the provided connection string and entity name
+func NewServiceBusPublisher(connectionString, entityName string, isQueue bool) (*ServiceBusPublisher, error) {
 	client, err := azservicebus.NewClientFromConnectionString(connectionString, nil)
 	if err != nil {
 		log.Debug("Using connection string", "connectionString", connectionString)
@@ -26,7 +27,8 @@ func NewServiceBusPublisher(connectionString, topicName string) (*ServiceBusPubl
 
 	publisher := &ServiceBusPublisher{
 		client:     client,
-		topicName:  topicName,
+		entityName: entityName,
+		isQueue:    isQueue,
 		batchSize:  10,                                     // Batch size for messages to send
 		batchQueue: make(chan map[string]interface{}, 100), // Buffered channel
 	}
@@ -36,10 +38,10 @@ func NewServiceBusPublisher(connectionString, topicName string) (*ServiceBusPubl
 	return publisher, nil
 }
 
-// PublishMessage publishes a message to a topic
-func (s *ServiceBusPublisher) PublishMessage(topic string, message []byte) error {
-	log.Debug("Publishing message to Service Bus", "topic", topic)
-	sender, err := s.client.NewSender(topic, nil)
+// PublishMessage publishes a message to a topic or queue
+func (s *ServiceBusPublisher) PublishMessage(entityName string, message []byte) error {
+	log.Debug("Publishing message to Service Bus", "entity", s.entityName, "isQueue", s.isQueue)
+	sender, err := s.client.NewSender(s.entityName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create sender: %w", err)
 	}
@@ -58,9 +60,9 @@ func (s *ServiceBusPublisher) PublishMessage(topic string, message []byte) error
 	return nil
 }
 
-// EnsureTopicExists ensures that a topic exists, creating it if necessary
-func (s *ServiceBusPublisher) EnsureTopicExists(topic string) error {
-	// Azure Service Bus creates topics automatically when sending messages
+// EnsureEntityExists ensures that a topic or queue exists, creating it if necessary
+func (s *ServiceBusPublisher) EnsureEntityExists(entityName string) error {
+	// Azure Service Bus creates entities automatically when sending messages
 	return nil
 }
 
@@ -72,7 +74,8 @@ func (s *ServiceBusPublisher) Close() error {
 
 // processMessages reads from batchQueue and sends messages in batches
 func (s *ServiceBusPublisher) processMessages() {
-	ticker := time.NewTicker(5 * time.Second)
+	log.Info("Starting message processor", "batchSize", s.batchSize, "entityName", s.entityName, "isQueue", s.isQueue)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	var batch []map[string]interface{}
@@ -80,6 +83,7 @@ func (s *ServiceBusPublisher) processMessages() {
 	for {
 		select {
 		case change := <-s.batchQueue:
+			log.Debug("Received message for batch", "batchSize", len(batch)+1)
 			batch = append(batch, change)
 			if len(batch) >= s.batchSize {
 				s.sendBatch(batch)
@@ -87,6 +91,7 @@ func (s *ServiceBusPublisher) processMessages() {
 			}
 		case <-ticker.C:
 			if len(batch) > 0 {
+				log.Info("Timer triggered batch send", "batchSize", len(batch))
 				s.sendBatch(batch)
 				batch = nil
 			}
@@ -96,7 +101,8 @@ func (s *ServiceBusPublisher) processMessages() {
 
 // sendBatch sends a batch of messages to the Service Bus topic
 func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
-	sender, err := s.client.NewSender(s.topicName, nil)
+	log.Info("Sending batch to Service Bus", "batchSize", len(batch), "entityName", s.entityName)
+	sender, err := s.client.NewSender(s.entityName, nil)
 	if err != nil {
 		log.Error("Failed to create Service Bus sender", "error", err)
 		return
@@ -115,10 +121,10 @@ func (s *ServiceBusPublisher) sendBatch(batch []map[string]interface{}) {
 		defer cancel()
 
 		if err := sender.SendMessage(ctx, message, nil); err != nil {
-			log.Error("Failed to send message to Service Bus", "error", err)
+			log.Error("Failed to send message to Service Bus", "error", err, "data", string(jsonData))
 			continue
 		}
-		log.Debug("Sent message to Service Bus", "data", string(jsonData))
+		log.Info("Sent message to Service Bus", "size", len(jsonData))
 	}
 }
 

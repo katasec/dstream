@@ -16,6 +16,7 @@ type ChangePublisherFactory struct {
 }
 
 func NewChangePublisherFactory(outputType string, connectionString string, dbConnectionString string) *ChangePublisherFactory {
+	log.Info("Creating publisher factory", "outputType", outputType, "connectionString", connectionString)
 	return &ChangePublisherFactory{
 		outputType:         outputType,
 		connectionString:   connectionString,
@@ -25,6 +26,7 @@ func NewChangePublisherFactory(outputType string, connectionString string, dbCon
 
 // Create returns a Publisher based on the Output.Type in config.
 func (f *ChangePublisherFactory) Create(tableName string) (messaging.Publisher, error) {
+	log.Info("Creating publisher", "outputType", f.outputType, "connectionString", f.connectionString)
 	switch strings.ToLower(f.outputType) {
 	case "eventhub":
 		log.Info("Creating EventHub publisher")
@@ -33,19 +35,19 @@ func (f *ChangePublisherFactory) Create(tableName string) (messaging.Publisher, 
 		}
 		return NewEventHubPublisher(f.connectionString), nil
 
-	case "servicebus":
+	case "azure_service_bus":
 		log.Info("Creating ServiceBus publisher")
 		if f.connectionString == "" {
 			return nil, errors.New("ServiceBus connection string is required")
 		}
-		// Generate the topic name based on the database and table name
-		topicName := GenTopicName(f.dbConnectionString, tableName)
-		log.Debug("Using topic", "name", topicName)
+		// Create a new ServiceBusPublisher for the ingest queue
+		queueName := "ingest-queue"
+		log.Info("Creating ServiceBus queue publisher", "name", queueName, "connectionString", f.connectionString)
 
-		// Create a new ServiceBusPublisher for the topic
-		publisher, err := NewServiceBusPublisher(f.connectionString, topicName)
+		// Create a new ServiceBusPublisher for the queue, explicitly setting isQueue to true
+		publisher, err := NewServiceBusPublisher(f.connectionString, queueName, true)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create ServiceBus publisher for topic %s: %w", topicName, err)
+			return nil, fmt.Errorf("failed to create ServiceBus publisher for queue %s: %w", queueName, err)
 		}
 		return publisher, nil
 

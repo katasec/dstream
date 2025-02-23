@@ -21,9 +21,9 @@ func (e *EventHubPublisher) PublishMessage(topic string, message []byte) error {
 	return nil
 }
 
-// EnsureTopicExists ensures that a topic exists, creating it if necessary
-func (e *EventHubPublisher) EnsureTopicExists(topic string) error {
-	// Event Hub creates topics automatically
+// EnsureEntityExists ensures that a topic or queue exists, creating it if necessary
+func (e *EventHubPublisher) EnsureEntityExists(entityName string) error {
+	// Event Hub creates entities automatically
 	return nil
 }
 

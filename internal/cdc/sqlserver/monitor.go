@@ -31,7 +31,7 @@ type SqlServerTableMonitor struct {
 }
 
 // NewSQLServerTableMonitor initializes a new SqlServerTableMonitor
-func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration) *SqlServerTableMonitor {
+func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, maxPollInterval time.Duration, publisher cdc.ChangePublisher) *SqlServerTableMonitor {
 	checkpointMgr := NewCheckpointManager(dbConn, tableName)
 
 	// Fetch column names once and store them in the struct
@@ -49,6 +49,7 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 		lastLSNs:        make(map[string][]byte),
 		checkpointMgr:   checkpointMgr,
 		columns:         columns,
+		publisher:       publisher,
 	}
 }
 

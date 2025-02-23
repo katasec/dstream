@@ -7,6 +7,6 @@
 // Key Components:
 //   - Publisher: Core interface for publishing messages to topics
 //     * PublishMessage: Publishes a message to a specified topic
-//     * EnsureTopicExists: Creates a topic if it doesn't exist
+//     * EnsureEntityExists: Creates a topic or queue if it doesn't exist
 //     * Close: Cleans up resources
 package messaging
