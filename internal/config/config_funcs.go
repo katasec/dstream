@@ -7,7 +7,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
-	"github.com/katasec/dstream/internal/messaging"
+	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
 )
 
 // CheckConfig validates the configuration based on the output type and lock type requirements
@@ -106,11 +106,11 @@ func (c *Config) serviceBusConfigCheck() {
 
 	// Ensure each topic exists or create it if not
 	for _, table := range c.Ingester.Tables {
-		topicName := messaging.GenTopicName(c.Ingester.DBConnectionString, table.Name)
+		topicName := servicebus.GenTopicName(c.Ingester.DBConnectionString, table.Name)
 		log.Info("Ensuring topic exists", "topic", topicName)
 
 		// Check and create topic if it doesn't exist
-		if err := messaging.CreateTopicIfNotExists(client, topicName); err != nil {
+		if err := servicebus.CreateTopicIfNotExists(client, topicName); err != nil {
 			log.Error("Failed to ensure topic exists", "topic", topicName, "error", err)
 			os.Exit(1)
 		}
