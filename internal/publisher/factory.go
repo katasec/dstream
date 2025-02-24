@@ -33,7 +33,11 @@ func (f *Factory) Create(tableName string) (Publisher, error) {
 		if f.connectionString == "" {
 			return nil, fmt.Errorf("connection string required for Azure Service Bus")
 		}
-		publisher, err := servicebus.NewPublisher(f.connectionString, "ingest-queue", true)
+		// Generate the topic name using the consistent naming function
+		topicName := servicebus.GenTopicName(f.dbConnectionString, tableName)
+		
+		// Create a new ServiceBusPublisher for the topic
+		publisher, err := servicebus.NewPublisher(f.connectionString, topicName, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Azure Service Bus publisher: %w", err)
 		}

@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/katasec/dstream/internal/publisher"
+	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
 	"github.com/katasec/dstream/pkg/cdc"
 )
 
@@ -20,6 +21,15 @@ func (t *ResolvedTableConfig) CreatePublisher() (cdc.ChangePublisher, error) {
 		return nil, err
 	}
 
+	// For Service Bus, use the generated topic name
+	var destination string
+	switch t.Output.Type {
+	case string("azure_service_bus"):
+		destination = servicebus.GenTopicName(t.DBConnectionString, t.Name)
+	default:
+		destination = "ingest-queue"
+	}
+
 	// Wrap the publisher in an adapter
-	return NewPublisherAdapter(publisher, "ingest-queue"), nil
+	return NewPublisherAdapter(publisher, destination), nil
 }

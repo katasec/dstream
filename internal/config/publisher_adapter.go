@@ -25,6 +25,11 @@ func NewPublisherAdapter(publisher publisher.Publisher, queueName string) *Publi
 
 // PublishChange implements cdc.ChangePublisher
 func (a *PublisherAdapter) PublishChange(data map[string]interface{}) error {
+	// Add destination to metadata
+	if metadata, ok := data["metadata"].(map[string]interface{}); ok {
+		metadata["Destination"] = a.queueName
+	}
+
 	// Convert data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
