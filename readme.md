@@ -1,11 +1,15 @@
 # DStream
 
-**DStream** is a robust application designed to monitor Microsoft SQL Server tables enabled with Change Data Capture (CDC) for updates. When changes are detected, DStream streams the data to Azure Service Bus for further processing, analytics, or event-driven applications. As a single-binary application with minimal external dependencies, DStream is easy to install, deploy, and containerize, making it highly suitable for cloud-native and scalable environments.
+**DStream** is a robust application designed to monitor Microsoft SQL Server tables enabled with Change Data Capture (CDC) for updates. When changes are detected, DStream streams the data to various destinations including Azure Service Bus and Event Hubs for further processing, analytics, or event-driven applications. As a single-binary application with minimal external dependencies, DStream is easy to install, deploy, and containerize, making it highly suitable for cloud-native and scalable environments.
 
 ## Key Features
 
 - **CDC Monitoring**: Tracks changes (inserts, updates, deletes) on MS SQL Server tables enabled with CDC
-- **Data Streaming**: Streams detected changes to Azure Service Bus, enabling real-time data processing
+- **Flexible Publishing**: Supports multiple publishing destinations:
+  - Azure Service Bus
+  - Azure Event Hubs
+  - Console (for debugging)
+- **Destination Routing**: Includes destination topic/queue in message metadata for proper routing
 - **Distributed Locking**: Uses Azure Blob Storage for distributed locking, ensuring reliable operation in multi-instance deployments
 - **Flexible Configuration**: HCL-based configuration with environment variable support for secure credential management
 - **Structured Logging**: Built-in structured logging with configurable log levels
@@ -104,15 +108,15 @@ DStream follows a modular architecture with clear separation of concerns:
 
 ### Components
 
-1. **Ingester**
+1. **CDC Monitor**
    - Monitors SQL Server tables for changes using CDC
-   - Uses distributed locking to support multiple instances
-   - Publishes changes to a message queue (e.g., Azure Service Bus)
+   - Uses adaptive polling with configurable intervals
+   - Tracks changes using LSN (Log Sequence Numbers)
 
-2. **Processor**
-   - Consumes changes from the message queue
-   - Processes and transforms data as needed
-   - Routes messages to appropriate destinations using Publishers
+2. **Publisher Adapter**
+   - Wraps publishers with additional metadata
+   - Adds destination routing information
+   - Provides a unified interface for all publishers
 
 3. **Publishers**
    - Pluggable components that handle message delivery
@@ -120,24 +124,21 @@ DStream follows a modular architecture with clear separation of concerns:
      - Azure Service Bus
      - Azure Event Hubs
      - Console (for debugging)
-   - Easy to add new implementations
+   - Easy to add new implementations via the Publisher interface
 
 ### Data Flow
 ```
-[SQL Server] --> [Ingester] --> [Queue] --> [Processor] --> [Publisher] --> [Destination]
-    |              |             |            |              |
-    |              |             |            |              |- Service Bus
-    |              |             |            |              |- Event Hubs
-    |              |             |            |              |- Console
-    |              |             |            |
-    |              |             |            |- Process Data
-    |              |             |            |- Route Messages
-    |              |             |
-    |              |             |- Buffer Changes
-    |              |             |- Decouple Components
+[SQL Server] --> [CDC Monitor] --> [Publisher Adapter] --> [Publisher] --> [Destination]
+    |              |                    |                    |
+    |              |                    |                    |- Service Bus
+    |              |                    |                    |- Event Hubs
+    |              |                    |                    |- Console
+    |              |                    |
+    |              |                    |- Add Metadata
+    |              |                    |- Route Information
     |              |
-    |              |- Monitor CDC
-    |              |- Distributed Locking
+    |              |- Track LSN
+    |              |- Adaptive Polling
     |
     |- CDC Enabled Tables
 ```
@@ -164,21 +165,31 @@ DStream follows a modular architecture with clear separation of concerns:
    - Environment variable support
    - Per-table configuration options
 
-### Command Line Interface
+### Message Format
 
-DStream provides two main commands:
+DStream publishes changes in a standardized JSON format:
 
-1. **Ingester**
-   ```bash
-   dstream ingester --config config.hcl
-   ```
-   Starts the ingester service that monitors CDC and publishes changes
+```json
+{
+  "data": {
+    "Field1": "Value1",
+    "Field2": "Value2"
+  },
+  "metadata": {
+    "Destination": "topic-or-queue-name",
+    "LSN": "00000034000025c80003",
+    "OperationID": 2,
+    "OperationType": "Insert|Update|Delete",
+    "TableName": "TableName"
+  }
+}
+```
 
-2. **Processor**
-   ```bash
-   dstream processor --config config.hcl
-   ```
-   Starts the processor service that consumes and processes changes
+The metadata includes:
+- Destination for routing
+- LSN for tracking
+- Operation type (Insert=2, Update=4, Delete=1)
+- Source table name
 
 
 ## Contributing
