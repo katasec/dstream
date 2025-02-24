@@ -22,7 +22,7 @@ type ServiceBusPublisher struct {
 func NewServiceBusPublisher(connectionString, entityName string, isQueue bool) (*ServiceBusPublisher, error) {
 	client, err := azservicebus.NewClientFromConnectionString(connectionString, nil)
 	if err != nil {
-		log.Debug("Using connection string", "connectionString", connectionString)
+		log.Debug("Failed to create Service Bus client")
 		return nil, fmt.Errorf("failed to create Service Bus client: %w", err)
 	}
 

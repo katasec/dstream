@@ -16,7 +16,7 @@ type ChangePublisherFactory struct {
 }
 
 func NewChangePublisherFactory(outputType string, connectionString string, dbConnectionString string) *ChangePublisherFactory {
-	log.Info("Creating publisher factory", "outputType", outputType, "connectionString", connectionString)
+	log.Info("Creating publisher factory", "outputType", outputType)
 	return &ChangePublisherFactory{
 		outputType:         outputType,
 		connectionString:   connectionString,
@@ -26,7 +26,7 @@ func NewChangePublisherFactory(outputType string, connectionString string, dbCon
 
 // Create returns a Publisher based on the Output.Type in config.
 func (f *ChangePublisherFactory) Create(tableName string) (messaging.Publisher, error) {
-	log.Info("Creating publisher", "outputType", f.outputType, "connectionString", f.connectionString)
+	log.Info("Creating publisher", "outputType", f.outputType)
 	switch strings.ToLower(f.outputType) {
 	case "eventhub":
 		log.Info("Creating EventHub publisher")
@@ -42,7 +42,7 @@ func (f *ChangePublisherFactory) Create(tableName string) (messaging.Publisher, 
 		}
 		// Create a new ServiceBusPublisher for the ingest queue
 		queueName := "ingest-queue"
-		log.Info("Creating ServiceBus queue publisher", "name", queueName, "connectionString", f.connectionString)
+		log.Info("Creating ServiceBus queue publisher", "name", queueName)
 
 		// Create a new ServiceBusPublisher for the queue, explicitly setting isQueue to true
 		publisher, err := NewServiceBusPublisher(f.connectionString, queueName, true)

@@ -16,14 +16,12 @@ var log = logging.GetLogger()
 func GenTopicName(connectionString string, tableName string) string {
 	dbName, err := extractDatabaseName(connectionString)
 	if err != nil {
-		fmt.Println("The connection string was:" + connectionString)
 		log.Error("Database name not found in connection string")
 		os.Exit(1)
 	}
 
 	serverName, err := extractServerName(connectionString)
 	if err != nil {
-		fmt.Println("The connection string was:" + connectionString)
 		log.Error("Server name not found in connection string")
 		os.Exit(1)
 	}

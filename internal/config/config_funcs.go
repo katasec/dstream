@@ -97,7 +97,7 @@ func (c *Config) serviceBusConfigCheck() {
 	client, err := admin.NewClientFromConnectionString(connectionString, nil)
 
 	if err != nil {
-		log.Debug("Using connection string", "connectionString", connectionString)
+		log.Debug("Failed to create Service Bus client")
 		log.Error("Failed to create Service Bus client", "error", err)
 		os.Exit(1)
 	} else {
