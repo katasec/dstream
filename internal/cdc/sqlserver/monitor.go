@@ -15,8 +15,6 @@ import (
 	"github.com/katasec/dstream/pkg/cdc"
 )
 
-
-
 // SqlServerTableMonitor manages SQL Server CDC monitoring for a specific table
 type SqlServerTableMonitor struct {
 	dbConn          *sql.DB
@@ -99,7 +97,7 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 			for _, change := range changes {
 
 				// Publish to console as a default
-				// consolePublisher.PublishChange(change)
+				m.publisher.PublishChange(change)
 
 				// publish to publisher configured for this table
 				m.publisher.PublishChange(change)

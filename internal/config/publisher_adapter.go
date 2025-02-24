@@ -4,19 +4,19 @@ import (
 	"encoding/json"
 
 	"github.com/katasec/dstream/pkg/cdc"
-	"github.com/katasec/dstream/pkg/messaging"
+	"github.com/katasec/dstream/internal/publisher"
 )
 
 var _ cdc.ChangePublisher = (*PublisherAdapter)(nil)
 
 // PublisherAdapter adapts a pkg_messaging.Publisher to a cdc.ChangePublisher
 type PublisherAdapter struct {
-	publisher messaging.Publisher
+	publisher publisher.Publisher
 	queueName string
 }
 
 // NewPublisherAdapter creates a new PublisherAdapter
-func NewPublisherAdapter(publisher messaging.Publisher, queueName string) *PublisherAdapter {
+func NewPublisherAdapter(publisher publisher.Publisher, queueName string) *PublisherAdapter {
 	return &PublisherAdapter{
 		publisher: publisher,
 		queueName: queueName,
@@ -25,6 +25,11 @@ func NewPublisherAdapter(publisher messaging.Publisher, queueName string) *Publi
 
 // PublishChange implements cdc.ChangePublisher
 func (a *PublisherAdapter) PublishChange(data map[string]interface{}) error {
+	// Add destination to metadata
+	if metadata, ok := data["metadata"].(map[string]interface{}); ok {
+		metadata["Destination"] = a.queueName
+	}
+
 	// Convert data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {

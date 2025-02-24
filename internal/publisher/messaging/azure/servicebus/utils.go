@@ -1,4 +1,4 @@
-package messaging
+package servicebus
 
 import (
 	"context"
@@ -8,11 +8,9 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
-	"github.com/katasec/dstream/internal/logging"
 )
 
-var log = logging.GetLogger()
-
+// GenTopicName generates a topic name for a given table
 func GenTopicName(connectionString string, tableName string) string {
 	dbName, err := extractDatabaseName(connectionString)
 	if err != nil {
@@ -30,7 +28,7 @@ func GenTopicName(connectionString string, tableName string) string {
 	return topicName
 }
 
-// ExtractDatabaseName extracts the database name from a connection string
+// extractDatabaseName extracts the database name from a connection string
 func extractDatabaseName(connectionString string) (string, error) {
 	// Parse the connection string
 	u, err := url.Parse(connectionString)
@@ -48,8 +46,7 @@ func extractDatabaseName(connectionString string) (string, error) {
 	return dbName, nil
 }
 
-// ExtractServerName extracts the server name from a connection string
-// If the server name is "localhost", it uses the hostname of the current machine.
+// extractServerName extracts the server name from a connection string
 func extractServerName(connectionString string) (string, error) {
 	// Parse the connection string
 	u, err := url.Parse(connectionString)
@@ -57,49 +54,40 @@ func extractServerName(connectionString string) (string, error) {
 		return "", fmt.Errorf("failed to parse connection string: %w", err)
 	}
 
-	// Extract the server name from the host part of the URL
-	host := u.Host
-	if host == "" {
+	// Get the server name from the host
+	serverName := strings.Split(u.Host, ".")[0]
+	if serverName == "" {
 		return "", fmt.Errorf("server name not found in connection string")
 	}
 
-	// Split the host to handle cases with a port (e.g., localhost:1433)
-	host = strings.Split(host, ":")[0]
-
-	// If the host is "localhost", get the system's hostname
-	if strings.ToLower(host) == "localhost" {
+	// If the server is localhost, use the machine's hostname
+	if strings.ToLower(serverName) == "localhost" {
 		hostname, err := os.Hostname()
 		if err != nil {
 			return "", fmt.Errorf("failed to get hostname: %w", err)
 		}
-		host = hostname
+		serverName = hostname
 	}
 
-	host = strings.ToLower(host)
-	return host, nil
+	return strings.ToLower(serverName), nil
 }
 
-// createTopicIfNotExists checks if a topic exists and creates it if it doesn’t
+// CreateTopicIfNotExists checks if a topic exists and creates it if it doesn't
 func CreateTopicIfNotExists(client *admin.Client, topicName string) error {
+	ctx := context.Background()
 
-	// If topic does not exist, create it
-	log.Info("Creating topic", "topic", topicName)
-	response, err := client.CreateTopic(context.TODO(), topicName, nil)
-
-	// Check alreadyExists error
-	alreadyExists := false
-	if err != nil {
-		alreadyExists = strings.Contains(err.Error(), "409 Conflict")
-	}
-
-	if alreadyExists {
-		log.Debug("Topic already exists", "topic", topicName)
+	// Try to get the topic properties
+	_, err := client.GetTopic(ctx, topicName, nil)
+	if err == nil {
+		// Topic exists
 		return nil
-	} else if err != nil {
-		log.Error("Failed to create topic", "topic", topicName, "error", err)
-		// return fmt.Errorf("failed to create topic %s: %w", topicName, err)
-		os.Exit(1)
 	}
-	fmt.Printf("Topic %s created successfully. Status: %d\n", topicName, response.Status)
+
+	// Create the topic if it doesn't exist
+	_, err = client.CreateTopic(ctx, topicName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create topic: %w", err)
+	}
+
 	return nil
 }

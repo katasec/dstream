@@ -9,8 +9,8 @@ import (
 
 	"github.com/katasec/dstream/internal/config"
 	"github.com/katasec/dstream/internal/logging"
-	"github.com/katasec/dstream/internal/messaging"
-	messagingapi "github.com/katasec/dstream/pkg/messaging"
+	"github.com/katasec/dstream/internal/publisher"
+
 )
 
 var log = logging.GetLogger()
@@ -18,7 +18,7 @@ var log = logging.GetLogger()
 // Processor handles consuming changes from a queue and publishing them to destinations
 type Processor struct {
 	config    *config.Config
-	publisher messagingapi.Publisher
+	publisher publisher.Publisher
 }
 
 // NewProcessor creates a new Processor instance
@@ -34,7 +34,7 @@ func (p *Processor) Start() error {
 	defer cancel()
 
 	// Initialize the publisher based on configuration
-	factory := messaging.NewChangePublisherFactory(
+	factory := publisher.NewFactory(
 		p.config.Publisher.Output.Type,
 		p.config.Publisher.Output.ConnectionString,
 		p.config.Ingester.DBConnectionString,
