@@ -4,19 +4,19 @@ import (
 	"encoding/json"
 
 	"github.com/katasec/dstream/pkg/cdc"
-	pkg_messaging "github.com/katasec/dstream/pkg/messaging"
+	"github.com/katasec/dstream/pkg/messaging"
 )
 
 var _ cdc.ChangePublisher = (*PublisherAdapter)(nil)
 
 // PublisherAdapter adapts a pkg_messaging.Publisher to a cdc.ChangePublisher
 type PublisherAdapter struct {
-	publisher pkg_messaging.Publisher
+	publisher messaging.Publisher
 	queueName string
 }
 
 // NewPublisherAdapter creates a new PublisherAdapter
-func NewPublisherAdapter(publisher pkg_messaging.Publisher, queueName string) *PublisherAdapter {
+func NewPublisherAdapter(publisher messaging.Publisher, queueName string) *PublisherAdapter {
 	return &PublisherAdapter{
 		publisher: publisher,
 		queueName: queueName,
