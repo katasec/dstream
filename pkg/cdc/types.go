@@ -23,5 +23,9 @@ type ChangeEvent struct {
 
 // ChangePublisher is an interface for publishing CDC change messages
 type ChangePublisher interface {
-	PublishChange(data map[string]interface{})
+	// PublishChange publishes a change event to a queue or topic
+	PublishChange(data map[string]interface{}) error
+
+	// Close releases any resources used by the publisher
+	Close() error
 }

@@ -68,11 +68,19 @@ func (t *TableMonitoringService) Start(ctx context.Context) error {
 		maxPollInterval, _ := tableConfig.GetMaxPollInterval()
 
 		// Initialize SQLServerMonitor for each table with poll intervals and the correct publisher.
+		// Create a publisher for this table
+		publisher, err := tableConfig.CreatePublisher()
+		if err != nil {
+			log.Info("Failed to create publisher", "table", tableConfig.Name, "error", err)
+			continue
+		}
+
 		monitor := sqlserver.NewSQLServerTableMonitor(
 			t.db,
 			tableConfig.Name,
 			pollInterval,
 			maxPollInterval,
+			publisher,
 		)
 
 		// Start monitoring each table as a separate goroutine using the helper function

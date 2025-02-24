@@ -7,11 +7,12 @@ ingester {
 
     # Default polling intervals for tables
     poll_interval_defaults {
-        poll_interval = "5s"
-        max_poll_interval = "2m"
+        poll_interval = "1s"
+        max_poll_interval = "5s"
     }
 
     queue {
+        type = "azure_service_bus"  # Type of queue (azure_service_bus, eventhub)
         name = "ingest-queue"
         connection_string = "{{ env "DSTREAM_INGEST_CONNECTION_STRING" }}"
     }
@@ -32,8 +33,8 @@ ingester {
     tables_overrides {
         overrides {
             table_name = "Persons"
-            poll_interval = "5s"
-            max_poll_interval = "10m"
+            poll_interval = "1s"
+            max_poll_interval = "5s"
         }
     }
 }
