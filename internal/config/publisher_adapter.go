@@ -29,17 +29,21 @@ func NewPublisherAdapter(publisher publisher.Publisher, queueName string, dbConn
 }
 
 // PublishChange implements cdc.ChangePublisher
-func (a *PublisherAdapter) PublishChange(data map[string]interface{}) error {
+func (a *PublisherAdapter) PublishChange(data map[string]interface{}) (<-chan bool, error) {
+	// Create a channel to signal successful publish
+	doneChan := make(chan bool, 1)
 	// Get database connection string and table name from metadata
 	metadata, ok := data["metadata"].(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("metadata not found in change data")
+		close(doneChan)
+		return doneChan, fmt.Errorf("metadata not found in change data")
 	}
 
 	// Generate the final destination topic name
 	tableName, ok := metadata["TableName"].(string)
 	if !ok {
-		return fmt.Errorf("TableName not found in metadata")
+		close(doneChan)
+		return doneChan, fmt.Errorf("TableName not found in metadata")
 	}
 
 	// Add both the immediate destination (ingest-queue) and final destination topic
@@ -48,18 +52,29 @@ func (a *PublisherAdapter) PublishChange(data map[string]interface{}) error {
 	// Generate the destination topic name
 	destination, err := servicebus.GenTopicName(a.dbConnString, tableName)
 	if err != nil {
-		return fmt.Errorf("failed to generate topic name: %w", err)
+		close(doneChan)
+		return doneChan, fmt.Errorf("failed to generate topic name: %w", err)
 	}
 	metadata["Destination"] = destination
 
 	// Convert data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return err
+		close(doneChan)
+		return doneChan, err
 	}
 
 	// Publish using the underlying publisher
-	return a.publisher.PublishMessage(context.Background(), jsonData)
+	if err := a.publisher.PublishMessage(context.Background(), jsonData); err != nil {
+		close(doneChan)
+		return doneChan, err
+	}
+
+	// Signal successful publish
+	doneChan <- true
+	close(doneChan)
+
+	return doneChan, nil
 }
 
 // Close implements cdc.ChangePublisher

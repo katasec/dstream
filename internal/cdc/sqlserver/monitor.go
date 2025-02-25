@@ -93,20 +93,36 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 			log.Info("Changes detected, publishing...", "table", m.tableName)
 
 			// Publish detected changes
-			//consolePublisher := &publishers.ConsolePublisher{}
+			var publishError error
 			for _, change := range changes {
+				// Publish the change and wait for confirmation
+				doneChan, err := m.publisher.PublishChange(change)
+				if err != nil {
+					log.Error("Failed to publish change", "error", err)
+					publishError = err
+					break
+				}
 
-				// Publish to console as a default
-				m.publisher.PublishChange(change)
-
-				// publish to publisher configured for this table
-				m.publisher.PublishChange(change)
+				// Wait for publish confirmation
+				if success := <-doneChan; !success {
+					log.Error("Failed to publish change")
+					publishError = fmt.Errorf("publish confirmation failed")
+					break
+				}
 			}
 
-			// Update last LSN and reset polling interval
-			m.lsnMutex.Lock()
-			m.lastLSNs[m.tableName] = newLSN
-			m.lsnMutex.Unlock()
+			// Only update LSN if all publishes were successful
+			if publishError == nil {
+				// Update last LSN and reset polling interval
+				m.lsnMutex.Lock()
+				m.lastLSNs[m.tableName] = newLSN
+				m.lsnMutex.Unlock()
+
+				// Update the checkpoint in the database
+				if err := m.checkpointMgr.SaveLastLSN(newLSN); err != nil {
+					log.Error("Failed to save checkpoint", "error", err)
+				}
+			}
 			backoff.ResetInterval() // Reset interval after detecting changes
 
 		} else {
