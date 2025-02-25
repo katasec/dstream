@@ -1,19 +1,51 @@
 # DStream
 
-**DStream** is a robust application designed to monitor Microsoft SQL Server tables enabled with Change Data Capture (CDC) for updates. When changes are detected, DStream streams the data to various destinations including Azure Service Bus and Event Hubs for further processing, analytics, or event-driven applications. As a single-binary application with minimal external dependencies, DStream is easy to install, deploy, and containerize, making it highly suitable for cloud-native and scalable environments.
+**DStream** is a robust Change Data Capture (CDC) streaming solution designed to capture changes from Microsoft SQL Server and reliably deliver them to downstream systems through Azure Service Bus. It follows a two-stage architecture with separate ingestion and routing components, ensuring reliable delivery and proper sequencing of changes.
+
+## Architecture
+
+DStream operates in two main stages:
+
+1. **Ingestion Stage (Ingester)**:
+   - Monitors SQL Server tables enabled with CDC
+   - Captures changes (inserts, updates, deletes)
+   - Publishes changes to a central ingest queue
+   - Updates CDC offsets only after successful queue publish
+   - Uses distributed locking for high availability
+
+2. **Routing Stage (Router)**:
+   - Consumes messages from the ingest queue
+   - Routes messages to their destination topics
+   - Pre-creates publishers at startup for optimal performance
+   - Ensures reliable delivery to downstream systems
+
+This architecture provides several benefits:
+- Reliable capture and delivery of changes
+- Proper sequencing of messages
+- High availability through distributed locking
+- Optimized performance with connection pooling
+- Clear separation of concerns between ingestion and routing
 
 ## Key Features
 
+### Ingestion
 - **CDC Monitoring**: Tracks changes (inserts, updates, deletes) on MS SQL Server tables enabled with CDC
-- **Flexible Publishing**: Supports multiple publishing destinations:
-  - Azure Service Bus
-  - Azure Event Hubs
-  - Console (for debugging)
-- **Destination Routing**: Includes destination topic/queue in message metadata for proper routing
-- **Distributed Locking**: Uses Azure Blob Storage for distributed locking, ensuring reliable operation in multi-instance deployments
-- **Flexible Configuration**: HCL-based configuration with environment variable support for secure credential management
-- **Structured Logging**: Built-in structured logging with configurable log levels
-- **Adaptive Polling**: Features adaptive backoff for table monitoring, adjusting polling frequency based on update rates
+- **Reliable Offset Management**: Updates CDC offsets only after successful publish to ingest queue
+- **Distributed Locking**: Uses Azure Blob Storage for distributed locking in multi-instance deployments
+- **Adaptive Polling**: Features adaptive backoff for table monitoring based on change frequency
+- **Automatic Topic Creation**: Creates topics and subscriptions for each monitored table
+
+### Routing
+- **Optimized Publishing**: Pre-creates and caches publishers at startup for better performance
+- **Reliable Delivery**: Ensures messages are properly delivered to destination topics
+- **Message Preservation**: Maintains original message properties during routing
+- **Automatic Topic Management**: Creates topics and subscriptions as needed
+
+### General
+- **Flexible Configuration**: HCL-based configuration with environment variable support
+- **Structured Logging**: Built-in structured logging with configurable levels
+- **High Availability**: Supports running multiple instances for redundancy
+- **Message Metadata**: Includes rich metadata for proper message routing and tracking
 
 ## Requirements
 
@@ -96,10 +128,86 @@ publisher {
 
 ## Usage
 
-To start the application:
+### Starting the Ingester
+
+The ingester captures changes from SQL Server and publishes them to the ingest queue:
 
 ```bash
-go run . server --log-level debug
+# Start with debug logging
+go run . ingester --log-level debug
+
+# Start with info logging (default)
+go run . ingester
+```
+
+The ingester will:
+1. Create topics for each monitored table
+2. Create a 'sub1' subscription for each topic
+3. Begin monitoring tables for changes
+4. Publish changes to the ingest queue
+5. Update CDC offsets after successful publish
+
+### Starting the Router
+
+The router consumes messages from the ingest queue and routes them to destination topics:
+
+```bash
+# Start with debug logging
+go run . router --log-level debug
+
+# Start with info logging (default)
+go run . router
+```
+
+The router will:
+1. Pre-create publishers for all configured tables
+2. Begin consuming messages from the ingest queue
+3. Route messages to their destination topics
+4. Ensure reliable delivery with proper sequencing
+
+## Message Format
+
+DStream uses a consistent message format throughout the pipeline:
+
+```json
+{
+    "data": {
+        "FirstName": "Diana",
+        "ID": "180",
+        "LastName": "Williams"
+    },
+    "metadata": {
+        "Destination": "server.database.table.events",
+        "IngestQueue": "ingest-queue",
+        "LSN": "0000003600000b200003",
+        "OperationID": 2,
+        "OperationType": "Insert",
+        "TableName": "Persons"
+    }
+}
+```
+
+### Message Fields
+
+#### Data Section
+- Contains the actual change data
+- Includes all columns from the monitored table
+- Values are preserved in their original types
+
+#### Metadata Section
+- `Destination`: Fully qualified destination topic name
+- `IngestQueue`: Name of the central ingest queue
+- `LSN`: Log Sequence Number from SQL Server CDC
+- `OperationID`: Type of change (1=delete, 2=insert, 3=update before, 4=update after)
+- `OperationType`: Human-readable operation type
+- `TableName`: Source table name
+
+### Running in Production
+
+For production deployments:
+
+```bash
+go run . server --log-level info
 ```
 
 ## Architecture
