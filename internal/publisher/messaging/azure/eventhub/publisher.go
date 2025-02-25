@@ -1,7 +1,11 @@
 package eventhub
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/katasec/dstream/internal/logging"
+	"github.com/katasec/dstream/internal/types"
 )
 
 var log = logging.GetLogger()
@@ -18,11 +22,21 @@ func NewPublisher(connectionString string) *Publisher {
 	}
 }
 
+// Create creates a new publisher for a specific destination
+func (p *Publisher) Create(destination string) (types.Publisher, error) {
+	return NewPublisher(p.connectionString), nil
+}
+
 // PublishMessage publishes a message to a topic
-func (p *Publisher) PublishMessage(topic string, message []byte) error {
-	log.Info("Publishing message to EventHub", "topic", topic)
-	// TODO: Implement Event Hub message publishing
-	return nil
+func (p *Publisher) PublishMessage(ctx context.Context, message interface{}) error {
+	switch message.(type) {
+	case []byte:
+		log.Info("Publishing message to EventHub")
+		// TODO: Implement Event Hub message publishing
+		return nil
+	default:
+		return fmt.Errorf("unsupported message type: %T", message)
+	}
 }
 
 // EnsureDestinationExists ensures that a topic exists

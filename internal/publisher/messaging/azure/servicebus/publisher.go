@@ -7,19 +7,22 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
+	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/katasec/dstream/internal/logging"
+	"github.com/katasec/dstream/internal/types"
 )
 
 var log = logging.GetLogger()
 
 // Publisher implements publisher.Publisher, sends messages to Azure Service Bus
 type Publisher struct {
-	client     *azservicebus.Client
-	sender     *azservicebus.Sender
-	entityName string
-	isQueue    bool
-	batchSize  int
-	batchQueue chan map[string]interface{}
+	connectionString string
+	client           *azservicebus.Client
+	sender           *azservicebus.Sender
+	entityName       string
+	isQueue          bool
+	batchSize        int
+	batchQueue       chan map[string]interface{}
 }
 
 // NewPublisher creates a new ServiceBusPublisher with the provided connection string and entity name
@@ -36,12 +39,13 @@ func NewPublisher(connectionString, entityName string, isQueue bool) (*Publisher
 	}
 
 	p := &Publisher{
-		client:     client,
-		sender:     sender,
-		entityName: entityName,
-		isQueue:    isQueue,
-		batchSize:  100,
-		batchQueue: make(chan map[string]interface{}, 1000),
+		connectionString: connectionString,
+		client:           client,
+		sender:           sender,
+		entityName:       entityName,
+		isQueue:          isQueue,
+		batchSize:        100,
+		batchQueue:       make(chan map[string]interface{}, 1000),
 	}
 
 	// Start processing messages in batches
@@ -50,15 +54,41 @@ func NewPublisher(connectionString, entityName string, isQueue bool) (*Publisher
 	return p, nil
 }
 
+// Create creates a new publisher for a specific destination
+func (p *Publisher) Create(destination string) (types.Publisher, error) {
+	return NewPublisher(p.connectionString, destination, p.isQueue)
+}
+
 // PublishMessage publishes a message to a topic or queue
-func (p *Publisher) PublishMessage(entityName string, message []byte) error {
-	// Create a new Service Bus message
+func (p *Publisher) PublishMessage(ctx context.Context, message interface{}) error {
+	switch msg := message.(type) {
+	case *azservicebus.ReceivedMessage:
+		return p.PublishServiceBusMessage(ctx, msg)
+	case []byte:
+		sbMessage := &azservicebus.Message{
+			Body: msg,
+		}
+		return p.sender.SendMessage(ctx, sbMessage, nil)
+	default:
+		return fmt.Errorf("unsupported message type: %T", message)
+	}
+}
+
+// PublishServiceBusMessage publishes a Service Bus message
+func (p *Publisher) PublishServiceBusMessage(ctx context.Context, message *azservicebus.ReceivedMessage) error {
+	// Create a new message with the same body and properties
 	sbMessage := &azservicebus.Message{
-		Body: message,
+		Body:                 message.Body,
+		ApplicationProperties: message.ApplicationProperties,
+		ContentType:          message.ContentType,
+		CorrelationID:        message.CorrelationID,
+		MessageID:            &message.MessageID,
+		Subject:              message.Subject,
+		To:                   message.To,
 	}
 
 	// Send the message
-	if err := p.sender.SendMessage(context.Background(), sbMessage, nil); err != nil {
+	if err := p.sender.SendMessage(ctx, sbMessage, nil); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
@@ -67,7 +97,19 @@ func (p *Publisher) PublishMessage(entityName string, message []byte) error {
 
 // EnsureDestinationExists ensures that a topic or queue exists, creating it if necessary
 func (p *Publisher) EnsureDestinationExists(entityName string) error {
-	// Implementation moved to utility functions
+	// Create an admin client
+	adminClient, err := admin.NewClientFromConnectionString(p.connectionString, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create admin client: %w", err)
+	}
+
+	// Create the topic if it doesn't exist
+	if !p.isQueue {
+		if err := CreateTopicIfNotExists(adminClient, entityName); err != nil {
+			return fmt.Errorf("failed to create topic: %w", err)
+		}
+	}
+
 	return nil
 }
 

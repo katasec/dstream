@@ -106,7 +106,11 @@ func (c *Config) serviceBusConfigCheck() {
 
 	// Ensure each topic exists or create it if not
 	for _, table := range c.Ingester.Tables {
-		topicName := servicebus.GenTopicName(c.Ingester.DBConnectionString, table.Name)
+		topicName, err := servicebus.GenTopicName(c.Ingester.DBConnectionString, table.Name)
+		if err != nil {
+			log.Error("Failed to generate topic name", "table", table.Name, "error", err)
+			os.Exit(1)
+		}
 		log.Info("Ensuring topic exists", "topic", topicName)
 
 		// Check and create topic if it doesn't exist

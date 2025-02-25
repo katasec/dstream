@@ -53,6 +53,12 @@ func TestGeneratePersonChanges(t *testing.T) {
 		t.Fatal("DSTREAM_INGEST_CONNECTION_STRING environment variable not set")
 	}
 
+	// Get database connection string
+	dbConnStr := os.Getenv("DSTREAM_DB_CONNECTION_STRING")
+	if dbConnStr == "" {
+		t.Fatal("DSTREAM_DB_CONNECTION_STRING environment variable not set")
+	}
+
 	// Create Service Bus publisher
 	basePublisher, err := servicebus.NewPublisher(sbConnStr, "ingest-queue", true)
 	if err != nil {
@@ -60,7 +66,7 @@ func TestGeneratePersonChanges(t *testing.T) {
 	}
 	
 	// Create the publisher adapter
-	publisher := config.NewPublisherAdapter(basePublisher, "ingest-queue")
+	publisher := config.NewPublisherAdapter(basePublisher, "ingest-queue", dbConnStr)
 
 	// Create and start the CDC monitor
 	monitor := sqlserver.NewSQLServerTableMonitor(

@@ -1,34 +1,28 @@
 package publisher
 
-// Publisher defines the interface for publishing change data
-type Publisher interface {
-	// PublishMessage publishes a message to a destination
-	PublishMessage(destination string, message []byte) error
-	
-	// EnsureDestinationExists ensures that the destination exists, creating it if necessary
-	EnsureDestinationExists(destination string) error
-	
-	// Close closes the publisher and releases any resources
-	Close() error
-}
+// Re-export types from internal/types package
+import (
+	"github.com/katasec/dstream/internal/types"
+)
 
-// Type represents the type of publisher
-type Type string
+type Publisher = types.Publisher
+type ServiceBusPublisher = types.ServiceBusPublisher
+type Type = types.Type
 
 const (
 	// Messaging publishers
-	AzureServiceBus Type = "azure_service_bus"
-	AzureEventHub   Type = "azure_event_hub"
-	
+	AzureServiceBus = types.AzureServiceBus
+	AzureEventHub   = types.AzureEventHub
+
 	// Storage publishers
-	AzureBlob       Type = "azure_blob"
-	AwsS3           Type = "aws_s3"
-	
+	AzureBlob = types.AzureBlob
+	AwsS3     = types.AwsS3
+
 	// Database publishers
-	SQLDatabase     Type = "sql_database"
-	MongoDB         Type = "mongodb"
-	
+	SQLDatabase = types.SQLDatabase
+	MongoDB     = types.MongoDB
+
 	// Debug publishers
-	Console         Type = "console"
-	Memory          Type = "memory"
+	Console = types.Console
+	Memory  = types.Memory
 )

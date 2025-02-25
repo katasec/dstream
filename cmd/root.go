@@ -31,7 +31,7 @@ using Change Data Capture (CDC) and publishing them to various destinations.`,
 
 func init() {
 	// Add persistent flags for config and logging
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "config.hcl", "Config file path")
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "dstream.hcl", "Config file path")
 	rootCmd.PersistentFlags().StringVarP(&logLevel, "log-level", "l", "info", "Set log level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().StringVarP(&logFormat, "log-format", "f", "text", "Set log format (text, json)")
 	rootCmd.PersistentFlags().BoolVarP(&logWithTime, "log-time", "t", false, "Include timestamp in logs")
