@@ -26,6 +26,7 @@ type SqlServerTableMonitor struct {
 	checkpointMgr   *CheckpointManager
 	publisher       cdc.ChangePublisher
 	columns         []string // Cached column names
+	batchSizer      *BatchSizer // Determines optimal batch size
 }
 
 // NewSQLServerTableMonitor initializes a new SqlServerTableMonitor
@@ -38,6 +39,9 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 		log.Info("Failed to fetch column names", "table", tableName, "error", err)
 		os.Exit(1)
 	}
+	
+	// Create a BatchSizer with Standard SKU limit by default
+	batchSizer := NewBatchSizer(dbConn, tableName, StandardSKULimit)
 
 	return &SqlServerTableMonitor{
 		dbConn:          dbConn,
@@ -48,6 +52,7 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 		checkpointMgr:   checkpointMgr,
 		columns:         columns,
 		publisher:       publisher,
+		batchSizer:      batchSizer,
 	}
 }
 
@@ -139,17 +144,21 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
 	log.Info("Polling changes", "table", monitor.tableName, "lsn", hex.EncodeToString(lastLSN))
 
+	// Get the optimal batch size from BatchSizer
+	batchSize := monitor.batchSizer.GetBatchSize()
+	log.Info("Using batch size", "table", monitor.tableName, "batchSize", batchSize)
+
 	// Use cached column names
 	columnList := "ct.__$start_lsn, ct.__$operation"
 	if len(monitor.columns) > 0 {
 		columnList += ", " + strings.Join(monitor.columns, ", ")
 	}
 	query := fmt.Sprintf(`
-        SELECT %s
+        SELECT TOP(%d) %s
         FROM TestDB.cdc.dbo_%s_CT AS ct
         WHERE ct.__$start_lsn > @lastLSN
         ORDER BY ct.__$start_lsn
-    `, columnList, monitor.tableName)
+    `, batchSize, columnList, monitor.tableName)
 
 	log.Info(query)
 	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
