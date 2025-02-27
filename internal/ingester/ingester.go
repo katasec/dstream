@@ -3,14 +3,15 @@ package ingester
 import (
 	"context"
 	"database/sql"
-	"github.com/katasec/dstream/internal/logging"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 
+	"github.com/katasec/dstream/internal/logging"
+
 	"github.com/katasec/dstream/internal/cdc/locking"
-	"github.com/katasec/dstream/internal/cdc/service"
+	"github.com/katasec/dstream/internal/cdc/orchestrator"
 	"github.com/katasec/dstream/internal/config"
 	"github.com/katasec/dstream/internal/db"
 )
@@ -55,7 +56,7 @@ func NewIngester() *Ingester {
 	}
 }
 
-// Start initializes the TableMonitoringService and begins monitoring each table in the config
+// Start initializes the TableMonitoringOrchestrator and begins monitoring each table in the config
 func (i *Ingester) Start() error {
 	defer i.dbConn.Close()
 
@@ -77,24 +78,24 @@ func (i *Ingester) Start() error {
 		log.Info("Monitoring table", "name", table.Name)
 	}
 
-	// Create table monitoring service for those tables
+	// Create table monitoring orchestrator for those tables
 	locksConfig := i.config.Ingester.Locks
 	lockerFactory := locking.NewLockerFactory(
 		locksConfig.Type,
 		locksConfig.ConnectionString,
 		locksConfig.ContainerName,
 	)
-	tableMonitoringService := service.NewTableMonitoringService(i.dbConn, lockerFactory, tablesToMonitor)
+	tableMonitoringOrchestrator := orchestrator.NewTableMonitoringOrchestrator(i.dbConn, lockerFactory, tablesToMonitor)
 
 	// Start Monitoring
 	go func() {
-		if err := tableMonitoringService.Start(ctx); err != nil {
-			log.Error("Monitoring service error", "error", err)
+		if err := tableMonitoringOrchestrator.Start(ctx); err != nil {
+			log.Error("Monitoring orchestrator error", "error", err)
 		}
 	}()
 
 	// Wait for interrupt signal for graceful shutdown
-	i.handleShutdown(cancel, tableMonitoringService)
+	i.handleShutdown(cancel, tableMonitoringOrchestrator)
 	return nil
 }
 
@@ -142,7 +143,7 @@ func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 }
 
 // handleShutdown listens for termination signals and ensures graceful shutdown
-func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *service.TableMonitoringService) {
+func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *orchestrator.TableMonitoringOrchestrator) {
 	// Capture SIGINT and SIGTERM signals
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
@@ -161,6 +162,6 @@ func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *servi
 		log.Info("Releasing all locks...")
 		tableService.ReleaseAllLocks(releaseCtx)
 	} else {
-		log.Info("No active TableMonitoringService; skipping lock release.")
+		log.Info("No active TableMonitoringOrchestrator; skipping lock release.")
 	}
 }

@@ -1,4 +1,4 @@
-package service
+package orchestrator
 
 import (
 	"context"
@@ -15,9 +15,17 @@ import (
 
 var log = logging.GetLogger()
 
-// TableMonitoringService manages monitoring for each table in the config.
-
-type TableMonitoringService struct {
+// TableMonitoringOrchestrator coordinates and manages the monitoring of multiple database tables
+// for Change Data Capture (CDC) operations. It serves as the central coordinator that:
+//  1. Acquires and manages distributed locks to ensure only one instance monitors each table
+//  2. Creates and initializes individual table monitors for each configured table
+//  3. Coordinates concurrent monitoring across multiple tables using goroutines
+//  4. Manages the lifecycle of table monitors, including graceful shutdown
+//  5. Handles lock release during shutdown to prevent resource leaks
+//
+// This orchestrator acts as a higher-level component that delegates the actual CDC monitoring
+// to database-specific implementations (e.g., SqlServerTableMonitor).
+type TableMonitoringOrchestrator struct {
 	db              *sql.DB
 	lockerFactory   *locking.LockerFactory
 	tablesToMonitor []config.ResolvedTableConfig
@@ -25,11 +33,19 @@ type TableMonitoringService struct {
 	tableLockers    map[string]locking.DistributedLocker
 }
 
-func NewTableMonitoringService(db *sql.DB, lockerFactory *locking.LockerFactory, tablesToMonitor []config.ResolvedTableConfig) *TableMonitoringService {
+// NewTableMonitoringOrchestrator creates and initializes a new orchestrator instance.
+// This constructor:
+//  1. Takes a database connection, locker factory, and list of tables to monitor
+//  2. Initializes internal tracking maps for lease IDs and table lockers
+//  3. Prepares the orchestrator to manage distributed monitoring across tables
+//
+// The orchestrator doesn't start monitoring until the Start method is explicitly called,
+// allowing for proper setup and configuration before monitoring begins.
+func NewTableMonitoringOrchestrator(db *sql.DB, lockerFactory *locking.LockerFactory, tablesToMonitor []config.ResolvedTableConfig) *TableMonitoringOrchestrator {
 	// Initialize the LeaseDBManager
 	//leaseDB := locking.NewLeaseDBManager(db)
 
-	return &TableMonitoringService{
+	return &TableMonitoringOrchestrator{
 		db:              db,
 		lockerFactory:   lockerFactory, // Get Locker type from config (for e.g. bloblocker)
 		leaseIDs:        make(map[string]string),
@@ -38,8 +54,17 @@ func NewTableMonitoringService(db *sql.DB, lockerFactory *locking.LockerFactory,
 	}
 }
 
-// Start initializes and starts monitoring for each table in the config.
-func (t *TableMonitoringService) Start(ctx context.Context) error {
+// Start initializes and begins the monitoring process for all configured tables.
+// This method:
+//  1. Creates a distributed lock for each table to ensure exclusive monitoring
+//  2. Initializes database-specific monitors (SqlServerTableMonitor) for each table
+//  3. Launches concurrent monitoring goroutines for each table
+//  4. Manages the lifecycle of all monitors using a WaitGroup
+//  5. Staggers the startup of monitors to prevent resource contention
+//
+// The method blocks until all monitoring goroutines have completed, which typically
+// happens only when the context is canceled or an unrecoverable error occurs.
+func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 	var wg sync.WaitGroup // WaitGroup to ensure goroutines complete
 
 	for _, tableConfig := range t.tablesToMonitor {
@@ -96,7 +121,12 @@ func (t *TableMonitoringService) Start(ctx context.Context) error {
 	return nil
 }
 
-func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
+// ReleaseAllLocks safely releases all distributed locks acquired for table monitoring.
+// This method is typically called during shutdown to ensure proper cleanup of resources
+// and to allow other instances to take over monitoring responsibilities. It iterates
+// through all monitored tables and attempts to release their corresponding locks,
+// logging the outcome of each release attempt.
+func (t *TableMonitoringOrchestrator) ReleaseAllLocks(ctx context.Context) {
 	for _, table := range t.tablesToMonitor {
 		log.Info("Attempting to release lock", "table", table.Name)
 		lockName := table.Name + ".lock"
@@ -113,7 +143,16 @@ func (t *TableMonitoringService) ReleaseAllLocks(ctx context.Context) {
 	}
 }
 
-func (t *TableMonitoringService) monitorTable(wg *sync.WaitGroup, monitor *sqlserver.SqlServerTableMonitor, tableConfig config.ResolvedTableConfig) {
+// monitorTable manages the lifecycle of a single table monitor within its own goroutine.
+// This method:
+//  1. Creates a dedicated context for the table monitor
+//  2. Initiates the monitoring process for the specific table
+//  3. Handles any errors that occur during monitoring
+//  4. Ensures the WaitGroup counter is decremented when monitoring completes
+//
+// It serves as a bridge between the orchestrator and the individual table monitors,
+// isolating each monitor in its own execution context.
+func (t *TableMonitoringOrchestrator) monitorTable(wg *sync.WaitGroup, monitor *sqlserver.SqlServerTableMonitor, tableConfig config.ResolvedTableConfig) {
 	defer wg.Done() // Mark goroutine as done when it completes
 
 	// Create a new context for this table monitor
@@ -125,5 +164,4 @@ func (t *TableMonitoringService) monitorTable(wg *sync.WaitGroup, monitor *sqlse
 	} else {
 		log.Info("Monitoring completed", "table", tableConfig.Name)
 	}
-
 }
