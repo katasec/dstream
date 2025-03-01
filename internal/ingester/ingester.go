@@ -64,15 +64,14 @@ func (i *Ingester) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Loop until we have tables to monitor
+	// Get list of tables to monitor (unlocked tables only)
 	tablesToMonitor := i.getTablesToMonitor()
-
 	if len(tablesToMonitor) == 0 {
 		log.Info("All tables are currently locked, nothing to monitor, exitting.")
 		os.Exit(1)
 	}
 
-	// Log monitored tables:
+	// Log the tables to be monitored
 	log.Info("The following tables will be monitored")
 	for _, table := range tablesToMonitor {
 		log.Info("Monitoring table", "name", table.Name)

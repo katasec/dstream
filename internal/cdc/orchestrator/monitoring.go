@@ -72,12 +72,15 @@ func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 
 		// Lock table using a locker from LockerFactory. Add locker to list for releasing locks on exit
 		lockName := tableConfig.Name + ".lock"
+
+		// Create appropriate locker as per config for the table (For e.g. bloblocker)
 		tableLocker, err := t.lockerFactory.CreateLocker(lockName)
 		if err != nil {
 			log.Info("Failed to create locker", "table", tableConfig.Name, "error", err)
 			wg.Done()
 			continue
 		} else {
+			// Acquire lock on the table
 			_, err := tableLocker.AcquireLock(ctx, lockName)
 			if err != nil {
 				log.Info("Could not acquire lock on table, exitting", "table", lockName)
@@ -85,6 +88,8 @@ func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 				os.Exit(1)
 			}
 			log.Info("Saving table locker in memory", "table", lockName)
+
+			// Save the locker for later use
 			t.tableLockers[lockName] = tableLocker
 		}
 
@@ -92,7 +97,6 @@ func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 		pollInterval, _ := tableConfig.GetPollInterval()
 		maxPollInterval, _ := tableConfig.GetMaxPollInterval()
 
-		// Initialize SQLServerMonitor for each table with poll intervals and the correct publisher.
 		// Create a publisher for this table
 		publisher, err := tableConfig.CreatePublisher()
 		if err != nil {
@@ -100,6 +104,7 @@ func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 			continue
 		}
 
+		// Create a new SQLServerTableMonitor for this table
 		monitor := sqlserver.NewSQLServerTableMonitor(
 			t.db,
 			tableConfig.Name,
@@ -108,7 +113,7 @@ func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 			publisher,
 		)
 
-		// Start monitoring each table as a separate goroutine using the helper function
+		// Start monitoring this table in a separate goroutine
 		go t.monitorTable(&wg, monitor, tableConfig)
 
 		// Stagger the start of each monitor by a short interval
