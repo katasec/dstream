@@ -25,7 +25,7 @@ type SqlServerTableMonitor struct {
 	lsnMutex        sync.Mutex
 	checkpointMgr   *CheckpointManager
 	publisher       cdc.ChangePublisher
-	columns         []string // Cached column names
+	columns         []string    // Cached column names
 	batchSizer      *BatchSizer // Determines optimal batch size
 }
 
@@ -39,7 +39,7 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 		log.Info("Failed to fetch column names", "table", tableName, "error", err)
 		os.Exit(1)
 	}
-	
+
 	// Create a BatchSizer with Standard SKU limit by default
 	batchSizer := NewBatchSizer(dbConn, tableName, StandardSKULimit)
 
@@ -222,14 +222,8 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 		latestLSN = lsn
 	}
 
-	// Save the last LSN if changes were found
-	if len(changes) > 0 {
-		log.Info("Saving new last LSN for table %s: %x", monitor.tableName, latestLSN)
-		err := monitor.checkpointMgr.SaveLastLSN(latestLSN)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to save last LSN for %s: %w", monitor.tableName, err)
-		}
-	}
+	// Return the changes and latest LSN without saving the checkpoint yet
+	// The checkpoint will be saved in MonitorTable after successful publishing
 
 	return changes, latestLSN, nil
 }
