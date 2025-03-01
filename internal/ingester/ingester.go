@@ -172,7 +172,7 @@ func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 
 	// Filter out the locked tables from the list
 	for _, table := range i.config.Ingester.Tables {
-		lockName := table.Name + ".lock"
+		lockName := lockerFactory.GetLockName(table.Name)
 		if lockedTableMap[lockName] {
 			log.Info("Table is locked and being monitored by another process", "table", table.Name)
 			continue

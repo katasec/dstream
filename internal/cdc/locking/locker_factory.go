@@ -46,6 +46,19 @@ func (f *LockerFactory) CreateLocker(lockName string) (DistributedLocker, error)
 	}
 }
 
+// GetLockName returns the appropriate lock name for a given table name based on the locker type
+func (f *LockerFactory) GetLockName(tableName string) string {
+	switch f.configType {
+	case "azure_blob":
+		// For blob locker, use the blob-specific naming convention
+		return GetBlobLockName(tableName)
+	default:
+		// Default case, just return the table name as the lock name
+		// This can be updated as new locker types are added
+		return tableName
+	}
+}
+
 // GetLockedTables checks if specific tables are locked
 func (f *LockerFactory) GetLockedTables(tableNames []string) ([]string, error) {
 	switch f.configType {

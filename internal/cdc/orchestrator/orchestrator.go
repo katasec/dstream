@@ -71,7 +71,7 @@ func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 		wg.Add(1) // Increment the WaitGroup counter for each table
 
 		// Lock table using a locker from LockerFactory. Add locker to list for releasing locks on exit
-		lockName := tableConfig.Name + ".lock"
+		lockName := t.lockerFactory.GetLockName(tableConfig.Name)
 
 		// Create appropriate locker as per config for the table (For e.g. bloblocker)
 		tableLocker, err := t.lockerFactory.CreateLocker(lockName)
@@ -134,7 +134,7 @@ func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 func (t *TableMonitoringOrchestrator) ReleaseAllLocks(ctx context.Context) {
 	for _, table := range t.tablesToMonitor {
 		log.Info("Attempting to release lock", "table", table.Name)
-		lockName := table.Name + ".lock"
+		lockName := t.lockerFactory.GetLockName(table.Name)
 		myLocker := t.tableLockers[lockName]
 
 		if myLocker != nil {

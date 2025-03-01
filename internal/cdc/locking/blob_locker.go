@@ -160,6 +160,12 @@ func (bl *BlobLocker) StartLockRenewal(ctx context.Context, lockName string) {
 	}()
 }
 
+// GetBlobLockName returns the lock name for a given table name using the blob locker naming convention
+// This is a package-level function so it can be used by both BlobLocker and LockerFactory
+func GetBlobLockName(tableName string) string {
+	return tableName + ".lock"
+}
+
 // GetLockedTables checks if specific tables are locked
 func (bl *BlobLocker) GetLockedTables(tableNames []string) ([]string, error) {
 	lockedTables := []string{}
@@ -167,7 +173,7 @@ func (bl *BlobLocker) GetLockedTables(tableNames []string) ([]string, error) {
 
 	// Check each table's lock status
 	for _, tableName := range tableNames {
-		lockName := tableName + ".lock"
+		lockName := GetBlobLockName(tableName)
 		blobClient := containerClient.NewBlobClient(lockName)
 
 		// Fetch the blob's properties
