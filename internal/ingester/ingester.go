@@ -18,6 +18,16 @@ import (
 
 var log = logging.GetLogger()
 
+// Ingester is the top-level component in the dstream architecture that:
+//  1. Initializes the system configuration and database connections
+//  2. Manages the lifecycle of the TableMonitoringOrchestrator
+//  3. Handles system signals for graceful shutdown
+//  4. Coordinates the overall data ingestion process
+//
+// The Ingester serves as the entry point and controller for the entire
+// data streaming pipeline, delegating the actual table monitoring work
+// to the TableMonitoringOrchestrator while maintaining responsibility
+// for system-wide concerns like configuration and shutdown procedures.
 type Ingester struct {
 	config        *config.Config
 	dbConn        *sql.DB
@@ -26,7 +36,15 @@ type Ingester struct {
 	wg *sync.WaitGroup
 }
 
-// NewIngester initializes the ingester, loads the configuration, and creates the locker factory
+// NewIngester initializes the ingester, loads the configuration, and creates the locker factory.
+// This constructor:
+//  1. Loads and validates the system configuration
+//  2. Establishes the database connection
+//  3. Initializes the distributed locking factory
+//  4. Prepares the Ingester to coordinate the data ingestion process
+//
+// The Ingester is created in a ready state but doesn't start any processing
+// until the Start method is explicitly called.
 func NewIngester() *Ingester {
 
 	config := config.NewConfig()
@@ -56,7 +74,20 @@ func NewIngester() *Ingester {
 	}
 }
 
-// Start initializes the TableMonitoringOrchestrator and begins monitoring each table in the config
+// Start initializes the TableMonitoringOrchestrator and begins monitoring each table in the config.
+// This method:
+//  1. Creates a cancellable context to control the monitoring lifecycle
+//  2. Identifies available tables that can be monitored (not locked by other instances)
+//  3. Initializes the TableMonitoringOrchestrator with the tables to monitor
+//  4. Launches the orchestrator in a separate goroutine to prevent blocking
+//  5. Sets up signal handling for graceful shutdown
+//
+// The goroutine used to start the orchestrator is critical to the design as it:
+//  - Allows the main thread to proceed to signal handling
+//  - Enables non-blocking orchestration of the monitoring process
+//  - Maintains the ability to propagate cancellation signals to all monitoring activities
+//
+// The method returns only after a shutdown signal is received and processed.
 func (i *Ingester) Start() error {
 	defer i.dbConn.Close()
 
@@ -86,7 +117,9 @@ func (i *Ingester) Start() error {
 	)
 	tableMonitoringOrchestrator := orchestrator.NewTableMonitoringOrchestrator(i.dbConn, lockerFactory, tablesToMonitor)
 
-	// Start Monitoring
+	// Start Monitoring in a separate goroutine to avoid blocking the main thread
+	// This allows the program to continue to the handleShutdown function
+	// while monitoring happens in the background
 	go func() {
 		if err := tableMonitoringOrchestrator.Start(ctx); err != nil {
 			log.Error("Monitoring orchestrator error", "error", err)
@@ -98,6 +131,17 @@ func (i *Ingester) Start() error {
 	return nil
 }
 
+// getTablesToMonitor identifies which tables from the configuration can be monitored.
+// This method:
+//  1. Retrieves the list of configured tables
+//  2. Checks which tables are already locked by other instances
+//  3. Filters out locked tables to prevent duplicate monitoring
+//  4. Returns only the tables that are available for monitoring
+//
+// This function plays an important role in the distributed architecture by:
+//  - Ensuring tables are not monitored by multiple instances simultaneously
+//  - Allowing the system to scale horizontally across multiple instances
+//  - Providing automatic work distribution among available instances
 func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 
 	// Get list of table names from config
@@ -141,7 +185,18 @@ func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 	return tablesToMonitor
 }
 
-// handleShutdown listens for termination signals and ensures graceful shutdown
+// handleShutdown listens for termination signals and ensures graceful shutdown.
+// This method:
+//  1. Sets up signal handling for SIGINT and SIGTERM
+//  2. Blocks until a termination signal is received
+//  3. Cancels the monitoring context to stop all monitoring goroutines
+//  4. Ensures all distributed locks are properly released
+//
+// This function is a critical part of the Ingester's architecture as it:
+//  - Provides a clean shutdown mechanism for the entire system
+//  - Ensures resources are properly released (particularly distributed locks)
+//  - Prevents resource leaks and allows other instances to take over monitoring
+//  - Completes the lifecycle management responsibility of the Ingester
 func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *orchestrator.TableMonitoringOrchestrator) {
 	// Capture SIGINT and SIGTERM signals
 	signalChan := make(chan os.Signal, 1)
