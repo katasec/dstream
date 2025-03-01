@@ -64,7 +64,8 @@ func NewIngester() *Ingester {
 	configType := config.Ingester.Locks.Type
 	connectionString := config.Ingester.Locks.ConnectionString
 	containerName := config.Ingester.Locks.ContainerName
-	lockerFactory := locking.NewLockerFactory(configType, connectionString, containerName)
+	dbConnectionString := config.Ingester.DBConnectionString
+	lockerFactory := locking.NewLockerFactory(configType, connectionString, containerName, dbConnectionString)
 
 	return &Ingester{
 		config:        config,
@@ -114,6 +115,7 @@ func (i *Ingester) Start() error {
 		locksConfig.Type,
 		locksConfig.ConnectionString,
 		locksConfig.ContainerName,
+		i.config.Ingester.DBConnectionString,
 	)
 	tableMonitoringOrchestrator := orchestrator.NewTableMonitoringOrchestrator(i.dbConn, lockerFactory, tablesToMonitor)
 
@@ -155,7 +157,8 @@ func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 	configType := i.config.Ingester.Locks.Type
 	connectionString := i.config.Ingester.Locks.ConnectionString
 	containerName := i.config.Ingester.Locks.ContainerName
-	lockerFactory := locking.NewLockerFactory(configType, connectionString, containerName)
+	dbConnectionString := i.config.Ingester.DBConnectionString
+	lockerFactory := locking.NewLockerFactory(configType, connectionString, containerName, dbConnectionString)
 
 	// Pass tableNames to locker factory to see if they are locked
 	lockedTables, err := lockerFactory.GetLockedTables(tableNames)

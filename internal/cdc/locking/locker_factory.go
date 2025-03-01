@@ -2,6 +2,9 @@ package locking
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/katasec/dstream/internal/utils"
 )
 
 // LockerFactory creates instances of DistributedLocker based on the configuration
@@ -10,6 +13,7 @@ type LockerFactory struct {
 	connectionString string
 	containerName    string
 	configType       string
+	dbConnectionString string // Database connection string for server name extraction
 	//leaseDB *LeaseDBManager // Add LeaseDBManager for database operations
 }
 
@@ -22,13 +26,14 @@ type LockerFactory struct {
 // }
 
 // NewLockerFactory initializes a new LockerFactory
-func NewLockerFactory(configType string, connectionString string, containerName string) *LockerFactory {
+func NewLockerFactory(configType string, connectionString string, containerName string, dbConnectionString string) *LockerFactory {
 	return &LockerFactory{
 		// config: config,
 		//leaseDB: leaseDB,
 		containerName:    containerName,
 		connectionString: connectionString,
 		configType:       configType,
+		dbConnectionString: dbConnectionString,
 	}
 }
 
@@ -50,7 +55,16 @@ func (f *LockerFactory) CreateLocker(lockName string) (DistributedLocker, error)
 func (f *LockerFactory) GetLockName(tableName string) string {
 	switch f.configType {
 	case "azure_blob":
-		// For blob locker, use the blob-specific naming convention
+		// For blob locker, use the blob-specific naming convention with server name subfolder
+		if f.dbConnectionString != "" {
+			// Extract server name from the database connection string
+			serverName, err := utils.ExtractServerNameFromConnectionString(f.dbConnectionString)
+			if err == nil && serverName != "" {
+				// Create a hierarchical lock name with server name as subfolder
+				return strings.ToLower(serverName) + "/" + GetBlobLockName(tableName)
+			}
+		}
+		// Fall back to the default naming if we can't extract the server name
 		return GetBlobLockName(tableName)
 	default:
 		// Default case, just return the table name as the lock name
