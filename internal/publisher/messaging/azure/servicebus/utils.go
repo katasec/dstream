@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
+	"github.com/katasec/dstream/internal/utils"
 )
 
 // GenTopicName generates a topic name for a given table
@@ -19,7 +19,7 @@ func GenTopicName(connectionString string, tableName string) (string, error) {
 		return "", fmt.Errorf("failed to extract database name: %w", err)
 	}
 
-	serverName, err := extractServerName(connectionString)
+	serverName, err := utils.ExtractServerNameFromConnectionString(connectionString)
 	if err != nil {
 		return "", fmt.Errorf("failed to extract server name: %w", err)
 	}
@@ -46,35 +46,14 @@ func extractDatabaseName(connectionString string) (string, error) {
 	return dbName, nil
 }
 
-// extractServerName extracts the server name from a connection string
+// Deprecated: Use utils.ExtractServerNameFromConnectionString instead
+// This function is kept for backward compatibility
 func extractServerName(connectionString string) (string, error) {
-	// Parse the connection string
-	u, err := url.Parse(connectionString)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse connection string: %w", err)
-	}
-
-	// Get the server name from the host
-	serverName := strings.Split(u.Host, ".")[0]
-	if serverName == "" {
-		return "", fmt.Errorf("server name not found in connection string")
-	}
-
-	// If the server is localhost or an IP address, use the machine's hostname
-	serverName = strings.Split(serverName, ":")[0] // Remove port if present
-	if strings.ToLower(serverName) == "localhost" || isIPAddress(serverName) {
-		hostname, err := os.Hostname()
-		if err != nil {
-			return "", fmt.Errorf("failed to get hostname: %w", err)
-		}
-		serverName = hostname
-	}
-
-	return strings.ToLower(serverName), nil
+	return utils.ExtractServerNameFromConnectionString(connectionString)
 }
 
-// CreateTopicIfNotExists checks if a topic exists and creates it if it doesn't
 // isIPAddress checks if a string is an IP address or part of one (like '127')
+// Deprecated: This function is no longer used directly
 func isIPAddress(host string) bool {
 	// Check if it's a full IP address
 	if ip := net.ParseIP(host); ip != nil {
@@ -92,6 +71,7 @@ func isIPAddress(host string) bool {
 	return false
 }
 
+// CreateTopicIfNotExists checks if a topic exists and creates it if it doesn't
 func CreateTopicIfNotExists(client *admin.Client, topicName string) error {
 	ctx := context.Background()
 
