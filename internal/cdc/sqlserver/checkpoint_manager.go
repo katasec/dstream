@@ -9,6 +9,7 @@ import (
 )
 
 var log = logging.GetLogger()
+var defaultStartLSN = "00000000000000000000"
 
 // Default checkpoint table name
 const defaultCheckpointTableName = "cdc_offsets"
@@ -57,7 +58,7 @@ func (c *CheckpointManager) InitializeCheckpointTable() error {
 }
 
 // LoadLastLSN retrieves the last known LSN for the specified table
-func (c *CheckpointManager) LoadLastLSN(defaultStartLSN string) ([]byte, error) {
+func (c *CheckpointManager) LoadLastLSN() ([]byte, error) {
 	var lastLSN []byte
 	query := fmt.Sprintf("SELECT last_lsn FROM %s WHERE table_name = @tableName", c.checkpointTable)
 	err := c.dbConn.QueryRow(query, sql.Named("tableName", c.tableName)).Scan(&lastLSN)

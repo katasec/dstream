@@ -64,11 +64,12 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 	}
 
 	// Load last LSN for this table
-	defaultStartLSN := "00000000000000000000"
-	initialLSN, err := m.checkpointMgr.LoadLastLSN(defaultStartLSN)
+	initialLSN, err := m.checkpointMgr.LoadLastLSN()
 	if err != nil {
 		return fmt.Errorf("error loading last LSN for table %s: %w", m.tableName, err)
 	}
+
+	// Multiple goroutines may access lastLSNs map, so lock it
 	m.lsnMutex.Lock()
 	m.lastLSNs[m.tableName] = initialLSN
 	m.lsnMutex.Unlock()
