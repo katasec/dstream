@@ -20,9 +20,6 @@ func NewMonitor(interval time.Duration) *Monitor {
 		interval: interval,
 	}
 
-	// Start memory logging in a separate goroutine
-	go m.Start()
-
 	return m
 }
 
@@ -32,8 +29,8 @@ func (m *Monitor) Start() {
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
 		log.Info("Number of Goroutines:", "Num", runtime.NumGoroutine())
-		log.Info("Total Memory Allocated: ", "Alloc", memStats.Alloc/1024/1024, "MB")
-		log.Info("Total Memory System: ", "Sys", memStats.Sys/1024/1024, "MB")
+		log.Info("Total Memory Allocated: ", "Alloc in MB", memStats.Alloc/1024/1024)
+		log.Info("Total Memory System: ", "Sys in MB", memStats.Sys/1024/1024)
 		time.Sleep(m.interval)
 	}
 }
