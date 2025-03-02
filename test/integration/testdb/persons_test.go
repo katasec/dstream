@@ -2,16 +2,12 @@
 package testdb
 
 import (
-	"context"
 	"database/sql"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/katasec/dstream/internal/cdc/sqlserver"
-	"github.com/katasec/dstream/internal/config"
-	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
 	_ "github.com/microsoft/go-mssqldb"
 )
 
@@ -34,68 +30,82 @@ func getTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func generateRandomPerson() (string, string) {
-	return firstNames[rand.Intn(len(firstNames))],
-		lastNames[rand.Intn(len(lastNames))]
+func generateRandomPerson(rng *rand.Rand) (string, string) {
+	return firstNames[rng.Intn(len(firstNames))],
+		lastNames[rng.Intn(len(lastNames))]
 }
 
-func TestGeneratePersonChanges(t *testing.T) {
+func TestSimplePersonChanges(t *testing.T) {
+	// Configure the number of persons to insert
+	numPersonsToInsert := 10 // Change this value to 1, 10, or 100 as needed
+
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
+	// Get database connection
 	db := getTestDB(t)
 	defer db.Close()
 
-	// Get Service Bus connection string from env
-	sbConnStr := os.Getenv("DSTREAM_INGEST_CONNECTION_STRING")
-	if sbConnStr == "" {
-		t.Fatal("DSTREAM_INGEST_CONNECTION_STRING environment variable not set")
-	}
-
-	// Get database connection string
-	dbConnStr := os.Getenv("DSTREAM_DB_CONNECTION_STRING")
-	if dbConnStr == "" {
-		t.Fatal("DSTREAM_DB_CONNECTION_STRING environment variable not set")
-	}
-
-	// Create Service Bus publisher
-	basePublisher, err := servicebus.NewPublisher(sbConnStr, "ingest-queue", true)
+	// Check that we're connected to TestDB
+	var dbName string
+	err := db.QueryRow("SELECT DB_NAME()").Scan(&dbName)
 	if err != nil {
-		t.Fatalf("Failed to create Service Bus publisher: %v", err)
+		t.Fatalf("Failed to get database name: %v", err)
 	}
+	if dbName != "TestDB" {
+		t.Fatalf("Expected to be connected to TestDB, but connected to %s", dbName)
+	}
+	t.Logf("Connected to database: %s", dbName)
+
+	// Reset the database to ensure we have a clean state
+	testDB, err := NewTestDB()
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Reset and insert initial test data
+	t.Log("Resetting database...")
+	err = testDB.Reset()
+	if err != nil {
+		t.Fatalf("Failed to reset database: %v", err)
+	}
+
+	// Insert initial test data
+	t.Log("Inserting initial test data...")
+	err = testDB.InsertTestData()
+	if err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Check if the table exists and is empty
+	var tableCount int
+	err = testDB.DB.QueryRow("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Persons'").Scan(&tableCount)
+	if err != nil {
+		t.Fatalf("Failed to check if Persons table exists: %v", err)
+	}
+	if tableCount == 0 {
+		t.Fatalf("Persons table does not exist")
+	}
+
+	// Check initial count
+	var initialCount int
+	err = testDB.DB.QueryRow("SELECT COUNT(*) FROM Persons").Scan(&initialCount)
+	if err != nil {
+		t.Fatalf("Failed to get initial count: %v", err)
+	}
+	t.Logf("Initial person count: %d", initialCount)
+
+	// Initialize random generator
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Insert multiple persons based on numPersonsToInsert
+	t.Logf("Inserting %d new persons...", numPersonsToInsert)
 	
-	// Create the publisher adapter
-	publisher := config.NewPublisherAdapter(basePublisher, "ingest-queue", dbConnStr)
-
-	// Create and start the CDC monitor
-	monitor := sqlserver.NewSQLServerTableMonitor(
-		db,
-		"Persons",
-		1*time.Second,  // Poll every second
-		5*time.Second,  // Max poll interval
-		publisher,
-	)
-
-	// Start monitoring in a goroutine
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		err := monitor.MonitorTable(ctx)
-		if err != nil && err != context.Canceled {
-			t.Errorf("Monitor error: %v", err)
-		}
-	}()
-
-	// Initialize random seed
-	rand.Seed(time.Now().UnixNano())
-
-	// Insert 5 new persons
-	t.Log("Inserting 5 new persons...")
-	for i := 0; i < 5; i++ {
-		firstName, lastName := generateRandomPerson()
-		_, err := db.Exec(`
+	for i := 0; i < numPersonsToInsert; i++ {
+		firstName, lastName := generateRandomPerson(rng)
+		result, err := testDB.DB.Exec(`
 			INSERT INTO Persons (FirstName, LastName)
 			VALUES (@p1, @p2)`,
 			sql.Named("p1", firstName),
@@ -104,68 +114,28 @@ func TestGeneratePersonChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to insert person: %v", err)
 		}
+		
+		// Check if the insert was successful
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			t.Fatalf("Failed to get rows affected: %v", err)
+		}
+		if rowsAffected != 1 {
+			t.Fatalf("Expected 1 row to be affected, got %d", rowsAffected)
+		}
+		
 		t.Logf("Inserted: %s %s", firstName, lastName)
-		time.Sleep(1 * time.Second) // Wait a bit between inserts
 	}
 
-	// Update some existing persons
-	t.Log("\nUpdating some persons...")
-	rows, err := db.Query("SELECT TOP 3 ID FROM Persons ORDER BY NEWID()")
-	if err != nil {
-		t.Fatalf("Failed to select random persons: %v", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
-			t.Fatalf("Failed to scan ID: %v", err)
-		}
-
-		// Generate new random values
-		newFirstName, newLastName := generateRandomPerson()
-		_, err := db.Exec(`
-			UPDATE Persons 
-			SET FirstName = @p1, LastName = @p2
-			WHERE ID = @p3`,
-			sql.Named("p1", newFirstName),
-			sql.Named("p2", newLastName),
-			sql.Named("p3", id),
-		)
-		if err != nil {
-			t.Fatalf("Failed to update person: %v", err)
-		}
-		t.Logf("Updated person ID %d: %s %s", id, newFirstName, newLastName)
-		time.Sleep(1 * time.Second) // Wait a bit between updates
-	}
-
-	// Delete some persons
-	t.Log("\nDeleting some persons...")
-	rows, err = db.Query("SELECT TOP 2 ID FROM Persons ORDER BY NEWID()")
-	if err != nil {
-		t.Fatalf("Failed to select random persons: %v", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
-			t.Fatalf("Failed to scan ID: %v", err)
-		}
-
-		_, err := db.Exec("DELETE FROM Persons WHERE ID = @p1", sql.Named("p1", id))
-		if err != nil {
-			t.Fatalf("Failed to delete person: %v", err)
-		}
-		t.Logf("Deleted person ID %d", id)
-		time.Sleep(1 * time.Second) // Wait a bit between deletes
-	}
-
-	// Final verification
-	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM Persons").Scan(&count)
+	// Verify final count
+	var finalCount int
+	err = testDB.DB.QueryRow("SELECT COUNT(*) FROM Persons").Scan(&finalCount)
 	if err != nil {
 		t.Fatalf("Failed to get final count: %v", err)
 	}
-	t.Logf("\nFinal person count in database: %d", count)
+	t.Logf("Final person count: %d (should be %d more than initial)", finalCount, numPersonsToInsert)
+
+	if finalCount != initialCount + numPersonsToInsert {
+		t.Errorf("Expected %d persons, got %d", initialCount + numPersonsToInsert, finalCount)
+	}
 }

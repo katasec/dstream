@@ -6,27 +6,33 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 )
 
-// Publisher defines the interface for publishing change data
-type Publisher interface {
-	// Create creates a new publisher for a specific destination
-	Create(destination string) (Publisher, error)
+// ChangeDataTransport defines the interface for transporting change data messages
+// to various messaging systems like Azure Service Bus, Event Hub, etc.
+type ChangeDataTransport interface {
+	// Create creates a new transport for a specific destination
+	Create(destination string) (ChangeDataTransport, error)
 
-	// PublishMessage publishes a message to a destination
-	PublishMessage(ctx context.Context, message interface{}) error
+	// PublishBatch publishes a batch of messages to a destination
+	// This is the only supported way to publish messages for improved atomicity and resilience
+	PublishBatch(ctx context.Context, messages []interface{}) error
 
 	// EnsureDestinationExists ensures that the destination exists, creating it if necessary
 	EnsureDestinationExists(destination string) error
 
-	// Close closes the publisher and releases any resources
+	// Close closes the transport and releases any resources
 	Close() error
 }
 
-// ServiceBusPublisher defines the interface for publishing to Azure Service Bus
-type ServiceBusPublisher interface {
-	Publisher
+
+
+// ServiceBusChangeDataTransport defines the interface for transporting change data to Azure Service Bus
+type ServiceBusChangeDataTransport interface {
+	ChangeDataTransport
 	// PublishServiceBusMessage publishes a Service Bus message
 	PublishServiceBusMessage(ctx context.Context, message *azservicebus.ReceivedMessage) error
 }
+
+
 
 // Type represents the type of publisher
 type Type string

@@ -94,7 +94,12 @@ func (bs *BatchSizer) Start(ctx context.Context) error {
 
 // GetBatchSize returns the current calculated batch size
 func (bs *BatchSizer) GetBatchSize() int32 {
-	return bs.batchSize.Load()
+	size := bs.batchSize.Load()
+	// Never return 0 as batch size
+	if size <= 0 {
+		return 100 // Default to 100 if not yet calculated
+	}
+	return size
 }
 
 // Store updates the current batch size atomically
@@ -109,54 +114,106 @@ func (bs *BatchSizer) Store(size int32) {
 
 // updateBatchSize samples records and updates the batch size
 func (bs *BatchSizer) updateBatchSize() error {
+	// First, get the column names for the CDC table
+	columnsQuery := fmt.Sprintf(`
+		SELECT COLUMN_NAME
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_NAME = 'dbo_%s_CT'
+		AND TABLE_SCHEMA = 'cdc'
+	`, bs.tableName)
+
+	colRows, err := bs.db.Query(columnsQuery)
+	if err != nil {
+		// If we can't get columns, use a simpler approach with just system columns
+		log.Info("Failed to get CDC table columns, using default size estimation", 
+			"table", bs.tableName, 
+			"error", err)
+		
+		// Use a default batch size
+		bs.Store(100)
+		return nil
+	}
+	defer colRows.Close()
+
+	// Build column list
+	var columns []string
+	for colRows.Next() {
+		var colName string
+		if err := colRows.Scan(&colName); err != nil {
+			return fmt.Errorf("failed to scan column name: %v", err)
+		}
+		columns = append(columns, colName)
+	}
+
+	if len(columns) == 0 {
+		log.Info("No columns found for CDC table, using default size estimation", 
+			"table", bs.tableName)
+		bs.Store(100)
+		return nil
+	}
+
+	// Build a query that selects all columns
 	query := fmt.Sprintf(`
-		SELECT TOP(%d)
-			__$start_lsn,
-			__$seqval,
-			__$operation,
-			__$update_mask,
-			ID,
-			Data
-		FROM cdc.dbo_%s_CT
+		SELECT TOP(%d) *
+		FROM TestDB.cdc.dbo_%s_CT
 		ORDER BY __$start_lsn DESC
 	`, bs.sampleSize, bs.tableName)
 
 	rows, err := bs.db.Query(query)
 	if err != nil {
-		return err
+		log.Info("Failed to query CDC table, using default size estimation", 
+			"table", bs.tableName, 
+			"error", err)
+		bs.Store(100)
+		return nil
 	}
 	defer rows.Close()
 
 	var totalSize int64
 	var count int32
 
+	// Get column types from the result set
+	colTypes, err := rows.ColumnTypes()
+	if err != nil {
+		log.Info("Failed to get column types, using default size estimation", 
+			"table", bs.tableName, 
+			"error", err)
+		bs.Store(100)
+		return nil
+	}
+
 	// Calculate average size of records
 	for rows.Next() {
-		// Scan the CDC columns
-		var startLsn []byte
-		var seqVal []byte
-		var operation int32
-		var updateMask []byte
-		var id int
-		var data string
-		if err := rows.Scan(&startLsn, &seqVal, &operation, &updateMask, &id, &data); err != nil {
-			return fmt.Errorf("failed to scan row: %v", err)
+		// Create a slice of interface{} to hold the values
+		values := make([]interface{}, len(colTypes))
+		valuePtrs := make([]interface{}, len(colTypes))
+
+		// Create pointers to each interface{} value
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		// Scan the result into the values
+		if err := rows.Scan(valuePtrs...); err != nil {
+			log.Info("Failed to scan row, using default size estimation", 
+				"table", bs.tableName, 
+				"error", err)
+			continue
 		}
 
 		// Create a record map like in real usage
-		record := map[string]interface{}{
-			"__$start_lsn": startLsn,
-			"__$seqval": seqVal,
-			"__$operation": operation,
-			"__$update_mask": updateMask,
-			"ID": id,
-			"Data": data,
+		record := make(map[string]interface{})
+		for i, col := range colTypes {
+			record[col.Name()] = values[i]
 		}
 
 		// Marshal to get real size
 		jsonData, err := json.Marshal(record)
 		if err != nil {
-			return err
+			log.Info("Failed to marshal record, skipping", 
+				"table", bs.tableName, 
+				"error", err)
+			continue
 		}
 
 		totalSize += int64(len(jsonData))
@@ -165,7 +222,8 @@ func (bs *BatchSizer) updateBatchSize() error {
 
 	if count == 0 {
 		// No records to sample, use minimum batch size
-		bs.Store(200) // Start with minimum expected batch size
+		bs.Store(100) // Start with minimum expected batch size
+		log.Info("No records found for sampling, using default batch size", "table", bs.tableName, "defaultBatchSize", 100)
 		return nil
 	}
 
@@ -173,15 +231,23 @@ func (bs *BatchSizer) updateBatchSize() error {
 	// Apply buffer factor
 	effectiveSize := avgSize * (1 + bs.bufferFactor)
 	
-	// Use fixed batch sizes based on SKU
+	// Calculate batch size based on message size limits
+	maxRecords := int32(float64(bs.maxMessageSize) / effectiveSize)
+	
+	// Apply reasonable limits to batch size
 	var newBatchSize int32
-	switch bs.maxMessageSize {
-	case StandardSKULimit:
-		newBatchSize = 100 // Standard SKU gets 100 records per batch
-	case PremiumSKULimit:
-		newBatchSize = 250 // Premium SKU gets 250 records per batch
+	switch {
+	case maxRecords <= 0:
+		newBatchSize = 50 // Minimum batch size if calculation is off
+	case maxRecords > 1000:
+		newBatchSize = 1000 // Cap at 1000 records per batch
 	default:
-		newBatchSize = 100 // Default to Standard SKU size
+		newBatchSize = maxRecords
+	}
+	
+	// Ensure we have at least a minimum batch size
+	if newBatchSize < 50 {
+		newBatchSize = 50
 	}
 
 	// Update batch size

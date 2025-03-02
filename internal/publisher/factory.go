@@ -26,8 +26,8 @@ func NewFactory(publisherType string, connectionString string, dbConnectionStrin
 	}
 }
 
-// Create returns a Publisher based on the configuration
-func (f *Factory) Create(tableName string) (types.Publisher, error) {
+// Create returns a ChangeDataTransport based on the configuration
+func (f *Factory) Create(tableName string) (types.ChangeDataTransport, error) {
 	switch f.publisherType {
 	// Messaging Publishers
 	case types.AzureServiceBus:
@@ -40,22 +40,22 @@ func (f *Factory) Create(tableName string) (types.Publisher, error) {
 			return nil, fmt.Errorf("failed to generate topic name: %w", err)
 		}
 		
-		// Create a new ServiceBusPublisher for the topic
-		publisher, err := servicebus.NewPublisher(f.connectionString, topicName, false)
+		// Create a new ServiceBusChangeDataTransport for the topic
+		transport, err := servicebus.NewServiceBusChangeDataTransport(f.connectionString, topicName, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Azure Service Bus publisher: %w", err)
 		}
-		return publisher, nil
+		return transport, nil
 
 	case types.AzureEventHub:
 		if f.connectionString == "" {
 			return nil, fmt.Errorf("connection string required for Azure Event Hub")
 		}
-		return eventhub.NewPublisher(f.connectionString), nil
+		return eventhub.NewEventHubChangeDataTransport(f.connectionString), nil
 
 	// Debug Publishers
 	case types.Console:
-		return console.NewPublisher(), nil
+		return console.NewConsoleChangeDataTransport(), nil
 
 	// Future implementations
 	case AzureBlob:

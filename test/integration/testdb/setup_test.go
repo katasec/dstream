@@ -21,6 +21,12 @@ func TestDatabaseSetup(t *testing.T) {
 	// Keeping the database for repeated runs
 	// defer testDB.Drop() // Clean up after test
 
+	// Reset the database to clear any existing data
+	err = testDB.Reset()
+	if err != nil {
+		t.Fatalf("Failed to reset database: %v", err)
+	}
+
 	// Insert test data
 	err = testDB.InsertTestData()
 	if err != nil {

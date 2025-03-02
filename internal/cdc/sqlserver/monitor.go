@@ -74,6 +74,12 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 	m.lastLSNs[m.tableName] = initialLSN
 	m.lsnMutex.Unlock()
 
+	// Start the batch sizer to calculate optimal batch sizes
+	err = m.batchSizer.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("error starting batch sizer: %w", err)
+	}
+
 	// Initialize the backoff manager
 	backoff := utils.NewBackoffManager(m.pollInterval, m.maxPollInterval)
 
@@ -96,39 +102,35 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 		}
 
 		if len(changes) > 0 {
-			log.Info("Changes detected, publishing...", "table", m.tableName)
+			log.Info("Changes detected, publishing...", "table", m.tableName, "changeCount", len(changes))
 
-			// Publish detected changes
-			var publishError error
-			for _, change := range changes {
-				// Publish the change and wait for confirmation
-				doneChan, err := m.publisher.PublishChange(change)
-				if err != nil {
-					log.Error("Failed to publish change", "error", err)
-					publishError = err
-					break
-				}
-
-				// Wait for publish confirmation
-				if success := <-doneChan; !success {
-					log.Error("Failed to publish change")
-					publishError = fmt.Errorf("publish confirmation failed")
-					break
-				}
+			// Publish all changes as a single batch
+			doneChan, err := m.publisher.PublishChanges(changes)
+			if err != nil {
+				log.Error("Failed to publish batch", "error", err, "changeCount", len(changes))
+				// Continue to next poll cycle without updating LSN
+				time.Sleep(backoff.GetInterval())
+				continue
 			}
 
-			// Only update LSN if all publishes were successful
-			if publishError == nil {
-				// Update last LSN and reset polling interval
-				m.lsnMutex.Lock()
-				m.lastLSNs[m.tableName] = newLSN
-				m.lsnMutex.Unlock()
-
-				// Update the checkpoint in the database
-				if err := m.checkpointMgr.SaveLastLSN(newLSN); err != nil {
-					log.Error("Failed to save checkpoint", "error", err)
-				}
+			// Wait for publish confirmation
+			if success := <-doneChan; !success {
+				log.Error("Failed to publish batch")
+				// Continue to next poll cycle without updating LSN
+				time.Sleep(backoff.GetInterval())
+				continue
 			}
+
+			// Update last LSN and reset polling interval
+			m.lsnMutex.Lock()
+			m.lastLSNs[m.tableName] = newLSN
+			m.lsnMutex.Unlock()
+
+			// Update the checkpoint in the database
+			if err := m.checkpointMgr.SaveLastLSN(newLSN); err != nil {
+				log.Error("Failed to save checkpoint", "error", err)
+			}
+			
 			backoff.ResetInterval() // Reset interval after detecting changes
 
 		} else {

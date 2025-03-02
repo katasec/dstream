@@ -5,8 +5,9 @@ import (
 	"github.com/katasec/dstream/internal/types"
 )
 
-type Publisher = types.Publisher
-type ServiceBusPublisher = types.ServiceBusPublisher
+// Re-export types from internal/types package
+type ChangeDataTransport = types.ChangeDataTransport
+type ServiceBusChangeDataTransport = types.ServiceBusChangeDataTransport
 type Type = types.Type
 
 const (

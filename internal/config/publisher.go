@@ -14,8 +14,8 @@ func (t *ResolvedTableConfig) CreatePublisher() (cdc.ChangePublisher, error) {
 		t.DBConnectionString,
 	)
 
-	// Create a publisher for this table
-	publisher, err := factory.Create(t.Name)
+	// Create a transport for this table
+	transport, err := factory.Create(t.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -23,6 +23,6 @@ func (t *ResolvedTableConfig) CreatePublisher() (cdc.ChangePublisher, error) {
 	// Always use ingest-queue as immediate destination
 	destination := "ingest-queue"
 
-	// Wrap the publisher in an adapter with both queue name and connection string
-	return NewPublisherAdapter(publisher, destination, t.DBConnectionString), nil
+	// Create a ChangeDataPublisher with the transport
+	return NewChangeDataPublisher(transport, destination, t.DBConnectionString), nil
 }

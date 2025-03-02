@@ -20,32 +20,32 @@ var log = logging.GetLogger()
 // Router handles routing messages from the ingest queue to their destination topics
 type Router struct {
 	config     *config.Config
-	publisher  publisher.Publisher
-	publishers map[string]publisher.Publisher // Cache of topic publishers
-	lock       sync.RWMutex                  // Lock for publishers map
+	transport  publisher.ChangeDataTransport
+	transports map[string]publisher.ChangeDataTransport // Cache of topic transports
+	lock       sync.RWMutex                           // Lock for transports map
 }
 
 // NewRouter creates a new Router instance
 func NewRouter(cfg *config.Config) (*Router, error) {
-	// Initialize the publisher based on configuration
+	// Initialize the transport based on configuration
 	factory := publisher.NewFactory(
 		cfg.Publisher.Output.Type,
 		cfg.Publisher.Output.ConnectionString,
 		cfg.Ingester.DBConnectionString,
 	)
 
-	basePublisher, err := factory.Create("")
+	baseTransport, err := factory.Create("")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create base publisher: %w", err)
+		return nil, fmt.Errorf("failed to create base transport: %w", err)
 	}
 
 	r := &Router{
 		config:     cfg,
-		publisher:  basePublisher,
-		publishers: make(map[string]publisher.Publisher),
+		transport:  baseTransport,
+		transports: make(map[string]publisher.ChangeDataTransport),
 	}
 
-	// Pre-create publishers for all tables in config
+	// Pre-create transports for all tables in config
 	for _, table := range cfg.Ingester.Tables {
 		// Generate the topic name
 		topicName, err := servicebus.GenTopicName(cfg.Ingester.DBConnectionString, table.Name)
@@ -54,18 +54,18 @@ func NewRouter(cfg *config.Config) (*Router, error) {
 		}
 
 		// Ensure topic exists
-		if err := basePublisher.EnsureDestinationExists(topicName); err != nil {
+		if err := baseTransport.EnsureDestinationExists(topicName); err != nil {
 			return nil, fmt.Errorf("failed to ensure topic exists for table %s: %w", table, err)
 		}
 
-		// Create publisher for this topic
-		topicPublisher, err := basePublisher.Create(topicName)
+		// Create transport for this topic
+		topicTransport, err := baseTransport.Create(topicName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create publisher for table %s: %w", table, err)
+			return nil, fmt.Errorf("failed to create transport for table %s: %w", table, err)
 		}
 
-		r.publishers[topicName] = topicPublisher
-		log.Debug("Created publisher for topic", "topic", topicName)
+		r.transports[topicName] = topicTransport
+		log.Debug("Created transport for topic", "topic", topicName)
 	}
 
 	return r, nil
@@ -143,23 +143,23 @@ func (r *Router) routeMessages(ctx context.Context) error {
 			destinationTopic := messageData.Metadata.Destination
 
 			// Ensure the topic exists
-			if err := r.publisher.EnsureDestinationExists(destinationTopic); err != nil {
+			if err := r.transport.EnsureDestinationExists(destinationTopic); err != nil {
 				log.Error("Failed to ensure topic exists", "topic", destinationTopic, "error", err)
 				continue
 			}
 
-			// Get the cached publisher for this topic
+			// Get the cached transport for this topic
 			r.lock.RLock()
-			topicPublisher, exists := r.publishers[destinationTopic]
+			topicTransport, exists := r.transports[destinationTopic]
 			r.lock.RUnlock()
 
 			if !exists {
-				log.Error("No publisher found for topic", "topic", destinationTopic)
+				log.Error("No transport found for topic", "topic", destinationTopic)
 				continue
 			}
 
-			// Forward the message to the destination topic
-			if err := topicPublisher.PublishMessage(ctx, msg[0]); err != nil {
+			// Forward the message to the destination topic using batch API
+			if err := topicTransport.PublishBatch(ctx, []interface{}{msg[0]}); err != nil {
 				log.Error("Failed to publish message to topic", "topic", destinationTopic, "error", err)
 				continue
 			}

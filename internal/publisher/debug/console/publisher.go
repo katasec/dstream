@@ -12,46 +12,56 @@ import (
 
 var log = logging.GetLogger()
 
-// Publisher implements publisher.Publisher, outputs to console
-type Publisher struct{}
+// ConsoleChangeDataTransport implements publisher.ChangeDataTransport, outputs change data messages to console
+type ConsoleChangeDataTransport struct{}
 
-// NewPublisher creates a new ConsolePublisher instance
-func NewPublisher() *Publisher {
-	return &Publisher{}
+// NewConsoleChangeDataTransport creates a new ConsoleChangeDataTransport instance
+func NewConsoleChangeDataTransport() *ConsoleChangeDataTransport {
+	return &ConsoleChangeDataTransport{}
 }
 
-// Create creates a new publisher for a specific destination
-func (p *Publisher) Create(destination string) (types.Publisher, error) {
-	return NewPublisher(), nil
+// Create creates a new transport for a specific destination
+func (p *ConsoleChangeDataTransport) Create(destination string) (types.ChangeDataTransport, error) {
+	return NewConsoleChangeDataTransport(), nil
 }
 
-// PublishMessage publishes a message to the console
-func (p *Publisher) PublishMessage(ctx context.Context, message interface{}) error {
-	var data []byte
-	switch msg := message.(type) {
-	case []byte:
-		data = msg
-	default:
-		return fmt.Errorf("unsupported message type: %T", message)
+// PublishBatch publishes a batch of messages to the console
+func (p *ConsoleChangeDataTransport) PublishBatch(ctx context.Context, messages []interface{}) error {
+	if len(messages) == 0 {
+		return nil // Nothing to publish
 	}
+	
+	log.Info("Publishing batch to console", "batchSize", len(messages))
+	
+	// Process each message in the batch
+	for i, message := range messages {
+		var data []byte
+		switch msg := message.(type) {
+		case []byte:
+			data = msg
+		default:
+			return fmt.Errorf("unsupported message type: %T", message)
+		}
 
-	var prettyJSON bytes.Buffer
-	if err := json.Indent(&prettyJSON, data, "", "  "); err != nil {
-		log.Error("Failed to format JSON", "error", err)
-		return err
+		var prettyJSON bytes.Buffer
+		if err := json.Indent(&prettyJSON, data, "", "  "); err != nil {
+			log.Error("Failed to format JSON", "error", err)
+			return err
+		}
+
+		log.Info(fmt.Sprintf("Message %d/%d:", i+1, len(messages)))
+		log.Info(prettyJSON.String())
 	}
-
-	log.Info("Publishing message to console")
-	log.Info(prettyJSON.String())
+	
 	return nil
 }
 
-// EnsureDestinationExists is a no-op for console publisher
-func (p *Publisher) EnsureDestinationExists(destination string) error {
+// EnsureDestinationExists is a no-op for console transport
+func (p *ConsoleChangeDataTransport) EnsureDestinationExists(destination string) error {
 	return nil
 }
 
-// Close is a no-op for console publisher
-func (p *Publisher) Close() error {
+// Close is a no-op for console transport
+func (p *ConsoleChangeDataTransport) Close() error {
 	return nil
 }
