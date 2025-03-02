@@ -7,15 +7,6 @@ Implement an error classification system that categorizes errors as transient or
 For transient errors, implement exponential backoff retry logic
 For persistent errors, fail fast and provide clear error messages for troubleshooting
 
-## Batch Processing Resilience
-Current State: If a batch fails partway through processing, there's potential for partial updates.
-
-### Design Ideas:
-
-Implement a two-phase commit pattern where changes are staged before being committed
-Track batch processing state in a separate table to allow for resuming after failures
-Consider implementing compensating transactions for rollback scenarios
-
 
 ## Connection Management
 Current State: Database connection failures might not be properly handled in all scenarios.
