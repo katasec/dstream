@@ -37,6 +37,11 @@ var (
 
 // Logger interface defines the logging methods
 type Logger interface {
+	// Standard log package compatible methods
+	Printf(format string, v ...any)
+	Println(v ...any)
+
+	// Structured logging methods
 	Debug(msg string, args ...any)
 	Info(msg string, args ...any)
 	Warn(msg string, args ...any)
@@ -119,6 +124,23 @@ func formatMessage(msg string, args ...any) string {
 		return fmt.Sprintf("%s [%s]", msg, strings.Join(pairs, " "))
 	}
 	return msg
+}
+
+// Printf provides compatibility with standard log.Printf
+func (l *stdLogger) Printf(format string, v ...any) {
+	if l.logLevel <= LevelInfo {
+		l.info.Printf("%s[INFO]%s %s", colorGreen, colorReset, fmt.Sprintf(format, v...))
+	}
+}
+
+// Println provides compatibility with standard log.Println
+func (l *stdLogger) Println(v ...any) {
+	if l.logLevel <= LevelInfo {
+		message := fmt.Sprintln(v...)
+		// Remove trailing newline that fmt.Sprintln adds
+		message = strings.TrimSuffix(message, "\n")
+		l.info.Printf("%s[INFO]%s %s", colorGreen, colorReset, message)
+	}
 }
 
 // Debug logs a debug message

@@ -70,7 +70,7 @@ func NewBlobLocker(connectionString, containerName, lockName string) (*BlobLocke
 // AcquireLock tries to acquire a lock on the blob and stores the lease ID
 func (bl *BlobLocker) AcquireLock(ctx context.Context, lockName string) (string, error) {
 	logger := logging.GetLogger()
-	logger.Info("Attempting to acquire lock for blob", "lockName", bl.lockName)
+	logger.Printf("Attempting to acquire lock for blob %s", bl.lockName)
 
 	// Try to acquire lease
 	resp, err := bl.blobLeaseClient.AcquireLease(bl.ctx, int32(bl.lockTTL.Seconds()), nil)
@@ -87,10 +87,10 @@ func (bl *BlobLocker) AcquireLock(ctx context.Context, lockName string) (string,
 			// Check if the lock is older than 2 minutes
 			lastModified := props.LastModified
 			lockAge := time.Since(*lastModified)
-			logger.Info("Lock was last modified", "lockName", bl.lockName, "lastModified", lastModified.Format(time.RFC3339), "ageMinutes", lockAge.Minutes())
+			logger.Printf("Lock on %s was last modified at: %v (%.2f minutes ago)", bl.lockName, lastModified.Format(time.RFC3339), lockAge.Minutes())
 
 			if lockAge > 2*time.Minute {
-				logger.Info("Lock is older than 2 minutes, breaking lease", "lockName", bl.lockName, "lastModified", lastModified.Format(time.RFC3339))
+				logger.Printf("Lock on %s is older than 2 minutes (last modified: %v). Breaking lease...", bl.lockName, lastModified.Format(time.RFC3339))
 
 				// Break the lease
 				_, err = bl.blobLeaseClient.BreakLease(ctx, nil)
@@ -106,17 +106,17 @@ func (bl *BlobLocker) AcquireLock(ctx context.Context, lockName string) (string,
 				if err != nil {
 					return "", fmt.Errorf("failed to acquire lease after breaking for %s: %w", bl.lockName, err)
 				}
-				logger.Info("Successfully acquired lock after breaking old lease", "lockName", bl.lockName)
+				logger.Printf("Successfully acquired lock after breaking old lease for %s", bl.lockName)
 				return *resp.LeaseID, nil
 			}
 
-			logger.Info("Table is already locked and the lock is still valid", "lockName", bl.lockName, "ageMinutes", lockAge.Minutes(), "ttlMinutes", 2)
+			logger.Printf("Table %s is already locked and the lock is still valid (%.2f minutes old, within 2 minute TTL). Skipping...", bl.lockName, lockAge.Minutes())
 			return "", nil
 		}
 		return "", fmt.Errorf("failed to acquire lock for blob %s: %w", bl.lockName, err)
 	}
 
-	logger.Info("Lock acquired for blob", "lockName", bl.lockName, "leaseID", *resp.LeaseID)
+	logger.Printf("Lock acquired for blob %s with Lease ID: %s", bl.lockName, *resp.LeaseID)
 	return *resp.LeaseID, nil
 }
 
@@ -127,7 +127,7 @@ func (bl *BlobLocker) RenewLock(ctx context.Context, lockName string) error {
 		return fmt.Errorf("failed to renew lock for blob %s: %w", lockName, err)
 	}
 
-	logger.Info("Lock renewed for blob", "lockName", lockName)
+	logger.Printf("Lock renewed for blob %s", lockName)
 	return nil
 }
 
@@ -139,14 +139,14 @@ func (bl *BlobLocker) ReleaseLock(tx context.Context, lockName string, leaseID s
 	if err != nil {
 		return fmt.Errorf("failed to release lock for blob %s: %w", bl.lockName, err)
 	} else {
-		logger.Info("Lock released successfully for blob", "lockName", bl.lockName)
+		logger.Printf("Lock released successfully for blob %s", bl.lockName)
 	}
 	return nil
 }
 
 func (bl *BlobLocker) StartLockRenewal(ctx context.Context, lockName string) {
 	logger := logging.GetLogger()
-	logger.Info("Starting lock renewal for blob", "lockName", lockName)
+	logger.Printf("Starting lock renewal for blob %s", lockName)
 	go func() {
 		ticker := time.NewTicker(bl.lockTTL / 2)
 		defer ticker.Stop()
@@ -155,10 +155,10 @@ func (bl *BlobLocker) StartLockRenewal(ctx context.Context, lockName string) {
 			select {
 			case <-ticker.C:
 				if err := bl.RenewLock(bl.ctx, bl.lockName); err != nil {
-					logger.Error("Failed to renew lock for blob", "lockName", lockName, "error", err)
+					logger.Printf("Failed to renew lock for blob %s: %v", lockName, err)
 				}
 			case <-ctx.Done():
-				logger.Info("Stopping lock renewal for blob", "lockName", lockName)
+				logger.Printf("Stopping lock renewal for blob %s", lockName)
 				return
 			}
 		}
@@ -189,7 +189,7 @@ func (bl *BlobLocker) GetLockedTables(tableNames []string) ([]string, error) {
 				continue
 			}
 			logger := logging.GetLogger()
-			logger.Error("Failed to get properties for blob", "lockName", lockName, "error", err)
+			logger.Printf("Failed to get properties for blob %s: %v", lockName, err)
 			continue
 		}
 
@@ -201,17 +201,17 @@ func (bl *BlobLocker) GetLockedTables(tableNames []string) ([]string, error) {
 
 		if *leaseStatus == "locked" && *leaseState == "leased" {
 			logger := logging.GetLogger()
-			logger.Info("Table is locked", 
-				"tableName", tableName, 
-				"lastModified", lastModified.Format(time.RFC3339), 
-				"ageMinutes", lockAge.Minutes())
+			logger.Printf("Table %s is locked (last modified: %v, %.2f minutes ago)", 
+				tableName, 
+				lastModified.Format(time.RFC3339), 
+				lockAge.Minutes())
 
 			// Only consider the table locked if the lock is less than 2 minutes old
 			if lockAge <= 2*time.Minute {
-				logger.Info("Lock is still valid", "ttlMinutes", 2)
+				logger.Printf(" - Lock is still valid (within 2 minute TTL)")
 				lockedTables = append(lockedTables, lockName)
 			} else {
-				logger.Info("Lock is stale, will be broken when acquired", "ttlMinutes", 2)
+				logger.Printf(" - Lock is stale (older than 2 minute TTL), will be broken when acquired")
 			}
 		}
 	}
