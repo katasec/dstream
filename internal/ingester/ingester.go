@@ -7,8 +7,10 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/katasec/dstream/internal/logging"
+	"github.com/katasec/dstream/internal/monitoring"
 
 	"github.com/katasec/dstream/internal/cdc/locking"
 	"github.com/katasec/dstream/internal/cdc/orchestrator"
@@ -33,7 +35,8 @@ type Ingester struct {
 	dbConn        *sql.DB
 	lockerFactory *locking.LockerFactory
 	// cancelFunc    context.CancelFunc
-	wg *sync.WaitGroup
+	wg      *sync.WaitGroup
+	monitor *monitoring.Monitor
 }
 
 // NewIngester initializes the ingester, loads the configuration, and creates the locker factory.
@@ -58,7 +61,7 @@ func NewIngester() *Ingester {
 	}
 
 	// Initialize LeaseDBManager
-	//leaseDB := locking.NewLeaseDBManager(dbConn)
+	monitor := monitoring.NewMonitor(time.Second * 60)
 
 	// Initialize LockerFactory with config and LeaseDBManager
 	configType := config.Ingester.Locks.Type
@@ -72,6 +75,7 @@ func NewIngester() *Ingester {
 		dbConn:        dbConn,
 		lockerFactory: lockerFactory,
 		wg:            &sync.WaitGroup{},
+		monitor:       monitor,
 	}
 }
 
@@ -84,13 +88,15 @@ func NewIngester() *Ingester {
 //  5. Sets up signal handling for graceful shutdown
 //
 // The goroutine used to start the orchestrator is critical to the design as it:
-//  - Allows the main thread to proceed to signal handling
-//  - Enables non-blocking orchestration of the monitoring process
-//  - Maintains the ability to propagate cancellation signals to all monitoring activities
+//   - Allows the main thread to proceed to signal handling
+//   - Enables non-blocking orchestration of the monitoring process
+//   - Maintains the ability to propagate cancellation signals to all monitoring activities
 //
 // The method returns only after a shutdown signal is received and processed.
 func (i *Ingester) Start() error {
 	defer i.dbConn.Close()
+
+	go i.monitor.Start()
 
 	// Create a new context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -141,9 +147,9 @@ func (i *Ingester) Start() error {
 //  4. Returns only the tables that are available for monitoring
 //
 // This function plays an important role in the distributed architecture by:
-//  - Ensuring tables are not monitored by multiple instances simultaneously
-//  - Allowing the system to scale horizontally across multiple instances
-//  - Providing automatic work distribution among available instances
+//   - Ensuring tables are not monitored by multiple instances simultaneously
+//   - Allowing the system to scale horizontally across multiple instances
+//   - Providing automatic work distribution among available instances
 func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 
 	// Get list of table names from config
@@ -196,10 +202,10 @@ func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 //  4. Ensures all distributed locks are properly released
 //
 // This function is a critical part of the Ingester's architecture as it:
-//  - Provides a clean shutdown mechanism for the entire system
-//  - Ensures resources are properly released (particularly distributed locks)
-//  - Prevents resource leaks and allows other instances to take over monitoring
-//  - Completes the lifecycle management responsibility of the Ingester
+//   - Provides a clean shutdown mechanism for the entire system
+//   - Ensures resources are properly released (particularly distributed locks)
+//   - Prevents resource leaks and allows other instances to take over monitoring
+//   - Completes the lifecycle management responsibility of the Ingester
 func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *orchestrator.TableMonitoringOrchestrator) {
 	// Capture SIGINT and SIGTERM signals
 	signalChan := make(chan os.Signal, 1)

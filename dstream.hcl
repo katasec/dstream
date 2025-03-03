@@ -33,8 +33,8 @@ ingester {
     tables_overrides {
         overrides {
             table_name = "Persons"
-            poll_interval = "1s"
-            max_poll_interval = "5s"
+            poll_interval = "10s"
+            max_poll_interval = "300s"
         }
     }
 }
