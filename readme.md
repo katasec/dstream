@@ -1,6 +1,35 @@
+
 # DStream
 
-**DStream** is a robust Change Data Capture (CDC) streaming solution designed to capture changes from Microsoft SQL Server and reliably deliver them to downstream systems through Azure Service Bus. It follows a two-stage architecture with separate ingestion and routing components, ensuring reliable delivery and proper sequencing of changes.
+**DStream** is a robust, stateless Change Data Capture (CDC) streaming solution designed to capture changes from Microsoft SQL Server and reliably deliver them to downstream systems through Azure Service Bus or any other message queue provider. Its purpose is simple: **collect and forward** streaming data (currently CDC, but extensible to APIs, webhooks, or other streams) to any downstream system.
+
+---
+
+## Design Philosophy
+
+### ✅ Stateless by Design
+- No in-memory workflows.
+- No complex orchestration.
+- No recovery logic inside the service.
+- State (offsets, LSNs, messages) is stored **externally** (in SQL or the queue).
+- Crash-safe: restart, reschedule, or scale out with zero warmup or coordination.
+
+### ✅ Durability & Reliability Offloaded
+- dstream **offloads durability, retries, and ordering** to external queue systems (Azure Service Bus, AWS SQS, Kafka).
+- Exactly-once guarantees at the batch level via atomic offset commits **after successful sends**.
+
+### ✅ Simplicity = Resilience
+- Reduces fault scenarios.
+- Eliminates workflow recovery issues.
+- Cuts operational overhead.
+- Easier to debug and operate.
+
+### ✅ Portability
+- Works across any cloud, queue system, source (SQL CDC, APIs, webhooks), and destination (queues, services).
+
+> The message queue is the orchestrator. The checkpoint is the resume point. The consumer defines the final behavior.
+
+
 
 ## Architecture
 
@@ -307,3 +336,34 @@ Contributions are welcome! Please submit a pull request or create an issue if yo
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
+
+---
+
+## Enhanced Features Summary
+
+### ✅ Reliable Offset Management
+- **CheckpointManager** tracks LSN offsets.
+- Only commits after successful batch publishing to ensure **exactly-once delivery**.
+
+### ✅ Adaptive Polling
+- Uses **BackOffManager** for dynamic backoff based on activity and errors.
+
+### ✅ BatchSizer
+- Dynamically optimizes batch sizes considering message size limits and table characteristics.
+
+### ✅ Distributed Locking
+- Ensures single active table monitoring across instances.
+
+### ✅ HCL Configuration
+- Simple, declarative config via `dstream.hcl`.
+
+### ✅ Plugin-Ready Architecture
+- **TableMonitor** and planned **Publisher** interfaces make sources and sinks swappable.
+
+### ✅ Extensible Support
+- Ready for future sources (Postgres, APIs) and destinations (Kafka, Event Hub).
+
+---
+
+## The Goal
+> Keep dstream lean, focused, and stateless—so it’s reliable, resilient, and boring (in the best way).
