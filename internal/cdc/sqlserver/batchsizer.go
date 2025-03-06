@@ -12,8 +12,8 @@ import (
 // Using log from package level
 
 const (
-	defaultSampleSize      = 100
-	defaultBufferFactor    = 0.2 // 20% safety margin
+	defaultSampleSize       = 100
+	defaultBufferFactor     = 0.2 // 20% safety margin
 	defaultResampleInterval = 1 * time.Hour
 
 	// Service Bus SKU limits
@@ -24,17 +24,17 @@ const (
 // BatchSizer calculates and maintains optimal batch sizes for CDC reads
 type BatchSizer struct {
 	batchSize        atomic.Int32
-	db              *sql.DB
-	tableName       string
-	maxMessageSize  int
-	sampleSize      int
-	bufferFactor    float64
+	db               *sql.DB
+	tableName        string
+	maxMessageSize   int
+	sampleSize       int
+	bufferFactor     float64
 	resampleInterval time.Duration
 
 	// For monitoring/metrics
-	lastSampleTime   atomic.Int64
-	lastSampleSize   atomic.Int32
-	lastAvgRowSize   atomic.Int32
+	lastSampleTime atomic.Int64
+	lastSampleSize atomic.Int32
+	lastAvgRowSize atomic.Int32
 }
 
 // BatchSizerOption allows customizing the BatchSizer
@@ -43,11 +43,11 @@ type BatchSizerOption func(*BatchSizer)
 // NewBatchSizer creates a new BatchSizer instance
 func NewBatchSizer(db *sql.DB, tableName string, maxMessageSize int, opts ...BatchSizerOption) *BatchSizer {
 	bs := &BatchSizer{
-		db:              db,
-		tableName:       tableName,
-		maxMessageSize:  maxMessageSize,
-		sampleSize:      defaultSampleSize,
-		bufferFactor:    defaultBufferFactor,
+		db:               db,
+		tableName:        tableName,
+		maxMessageSize:   maxMessageSize,
+		sampleSize:       defaultSampleSize,
+		bufferFactor:     defaultBufferFactor,
 		resampleInterval: defaultResampleInterval,
 	}
 
@@ -105,8 +105,8 @@ func (bs *BatchSizer) GetBatchSize() int32 {
 // Store updates the current batch size atomically
 func (bs *BatchSizer) Store(size int32) {
 	bs.batchSize.Store(size)
-	
-	log.Info("Batch size updated", 
+
+	log.Info("Batch size updated",
 		"table", bs.tableName,
 		"newSize", size,
 		"time", time.Now().Format(time.RFC3339))
@@ -125,10 +125,10 @@ func (bs *BatchSizer) updateBatchSize() error {
 	colRows, err := bs.db.Query(columnsQuery)
 	if err != nil {
 		// If we can't get columns, use a simpler approach with just system columns
-		log.Info("Failed to get CDC table columns, using default size estimation", 
-			"table", bs.tableName, 
+		log.Info("Failed to get CDC table columns, using default size estimation",
+			"table", bs.tableName,
 			"error", err)
-		
+
 		// Use a default batch size
 		bs.Store(100)
 		return nil
@@ -146,7 +146,7 @@ func (bs *BatchSizer) updateBatchSize() error {
 	}
 
 	if len(columns) == 0 {
-		log.Info("No columns found for CDC table, using default size estimation", 
+		log.Info("No columns found for CDC table, using default size estimation",
 			"table", bs.tableName)
 		bs.Store(100)
 		return nil
@@ -155,14 +155,14 @@ func (bs *BatchSizer) updateBatchSize() error {
 	// Build a query that selects all columns
 	query := fmt.Sprintf(`
 		SELECT TOP(%d) *
-		FROM TestDB.cdc.dbo_%s_CT
+		FROM cdc.dbo_%s_CT
 		ORDER BY __$start_lsn DESC
 	`, bs.sampleSize, bs.tableName)
 
 	rows, err := bs.db.Query(query)
 	if err != nil {
-		log.Info("Failed to query CDC table, using default size estimation", 
-			"table", bs.tableName, 
+		log.Info("Failed to query CDC table, using default size estimation",
+			"table", bs.tableName,
 			"error", err)
 		bs.Store(100)
 		return nil
@@ -175,8 +175,8 @@ func (bs *BatchSizer) updateBatchSize() error {
 	// Get column types from the result set
 	colTypes, err := rows.ColumnTypes()
 	if err != nil {
-		log.Info("Failed to get column types, using default size estimation", 
-			"table", bs.tableName, 
+		log.Info("Failed to get column types, using default size estimation",
+			"table", bs.tableName,
 			"error", err)
 		bs.Store(100)
 		return nil
@@ -195,8 +195,8 @@ func (bs *BatchSizer) updateBatchSize() error {
 
 		// Scan the result into the values
 		if err := rows.Scan(valuePtrs...); err != nil {
-			log.Info("Failed to scan row, using default size estimation", 
-				"table", bs.tableName, 
+			log.Info("Failed to scan row, using default size estimation",
+				"table", bs.tableName,
 				"error", err)
 			continue
 		}
@@ -210,8 +210,8 @@ func (bs *BatchSizer) updateBatchSize() error {
 		// Marshal to get real size
 		jsonData, err := json.Marshal(record)
 		if err != nil {
-			log.Info("Failed to marshal record, skipping", 
-				"table", bs.tableName, 
+			log.Info("Failed to marshal record, skipping",
+				"table", bs.tableName,
 				"error", err)
 			continue
 		}
@@ -230,10 +230,10 @@ func (bs *BatchSizer) updateBatchSize() error {
 	avgSize := float64(totalSize) / float64(count)
 	// Apply buffer factor
 	effectiveSize := avgSize * (1 + bs.bufferFactor)
-	
+
 	// Calculate batch size based on message size limits
 	maxRecords := int32(float64(bs.maxMessageSize) / effectiveSize)
-	
+
 	// Apply reasonable limits to batch size
 	var newBatchSize int32
 	switch {
@@ -244,7 +244,7 @@ func (bs *BatchSizer) updateBatchSize() error {
 	default:
 		newBatchSize = maxRecords
 	}
-	
+
 	// Ensure we have at least a minimum batch size
 	if newBatchSize < 50 {
 		newBatchSize = 50
@@ -252,7 +252,7 @@ func (bs *BatchSizer) updateBatchSize() error {
 
 	// Update batch size
 	bs.Store(newBatchSize)
-	
+
 	// Update metrics
 	bs.lastSampleTime.Store(time.Now().Unix())
 	bs.lastSampleSize.Store(count)
@@ -292,9 +292,9 @@ type BatchSizerMetrics struct {
 	CurrentBatchSize int32
 	LastSampleTime   time.Time
 	LastSampleSize   int32
-	AvgRowSize      int32
+	AvgRowSize       int32
 	MaxMessageSize   int
-	BufferFactor    float64
+	BufferFactor     float64
 }
 
 // GetMetrics returns current batch sizing metrics
@@ -303,8 +303,8 @@ func (bs *BatchSizer) GetMetrics() BatchSizerMetrics {
 		CurrentBatchSize: bs.batchSize.Load(),
 		LastSampleTime:   time.Unix(bs.lastSampleTime.Load(), 0),
 		LastSampleSize:   bs.lastSampleSize.Load(),
-		AvgRowSize:      bs.lastAvgRowSize.Load(),
+		AvgRowSize:       bs.lastAvgRowSize.Load(),
 		MaxMessageSize:   bs.maxMessageSize,
-		BufferFactor:    bs.bufferFactor,
+		BufferFactor:     bs.bufferFactor,
 	}
 }

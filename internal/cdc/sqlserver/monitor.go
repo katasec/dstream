@@ -130,7 +130,7 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 			if err := m.checkpointMgr.SaveLastLSN(newLSN); err != nil {
 				log.Error("Failed to save checkpoint", "error", err)
 			}
-			
+
 			backoff.ResetInterval() // Reset interval after detecting changes
 
 		} else {
@@ -156,9 +156,10 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 	if len(monitor.columns) > 0 {
 		columnList += ", " + strings.Join(monitor.columns, ", ")
 	}
+
 	query := fmt.Sprintf(`
         SELECT TOP(%d) %s
-        FROM TestDB.cdc.dbo_%s_CT AS ct
+        FROM cdc.dbo_%s_CT AS ct
         WHERE ct.__$start_lsn > @lastLSN
         ORDER BY ct.__$start_lsn
     `, batchSize, columnList, monitor.tableName)
