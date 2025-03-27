@@ -39,7 +39,7 @@ ingester {
     }
 }
 
-publisher {
+router {
     source {
         type = "azure_service_bus"
         connection_string = "{{ env "DSTREAM_PUBLISHER_CONNECTION_STRING" }}"  # Used if type is "eventhub" or "servicebus"            

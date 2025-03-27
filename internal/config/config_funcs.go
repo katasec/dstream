@@ -18,14 +18,14 @@ func (c *Config) CheckConfig() {
 	}
 
 	// Validate Output configuration
-	switch strings.ToLower(c.Publisher.Output.Type) {
+	switch strings.ToLower(c.Router.Output.Type) {
 	case "azure_service_bus":
 		c.serviceBusConfigCheck()
 	case "console":
 		// Console output type doesn't need a connection string
 		log.Debug("Output set to console; no additional connection string required")
 	default:
-		log.Error("Unknown output type", "type", c.Publisher.Output.Type)
+		log.Error("Unknown output type", "type", c.Router.Output.Type)
 		os.Exit(1)
 	}
 
@@ -85,8 +85,8 @@ func (c *Config) validateBlobLockConfig() {
 // serviceBusConfigCheck validates the Service Bus configuration and ensures topics exist for each table
 func (c *Config) serviceBusConfigCheck() {
 
-	connectionString := c.Publisher.Output.ConnectionString
-	publisherType := c.Publisher.Output.Type
+	connectionString := c.Router.Output.ConnectionString
+	publisherType := c.Router.Output.Type
 
 	if connectionString == "" {
 		log.Error("Connection string required", "type", publisherType)

@@ -22,15 +22,15 @@ type Router struct {
 	config     *config.Config
 	transport  publisher.ChangeDataTransport
 	transports map[string]publisher.ChangeDataTransport // Cache of topic transports
-	lock       sync.RWMutex                           // Lock for transports map
+	lock       sync.RWMutex                             // Lock for transports map
 }
 
 // NewRouter creates a new Router instance
 func NewRouter(cfg *config.Config) (*Router, error) {
 	// Initialize the transport based on configuration
 	factory := publisher.NewFactory(
-		cfg.Publisher.Output.Type,
-		cfg.Publisher.Output.ConnectionString,
+		cfg.Router.Output.Type,
+		cfg.Router.Output.ConnectionString,
 		cfg.Ingester.DBConnectionString,
 	)
 
@@ -101,8 +101,6 @@ func (r *Router) routeMessages(ctx context.Context) error {
 	}
 	defer receiver.Close(ctx)
 
-
-
 	log.Info("Started routing messages from ingest queue")
 
 	for {
@@ -162,6 +160,8 @@ func (r *Router) routeMessages(ctx context.Context) error {
 			if err := topicTransport.PublishBatch(ctx, []interface{}{msg[0]}); err != nil {
 				log.Error("Failed to publish message to topic", "topic", destinationTopic, "error", err)
 				continue
+			} else {
+				log.Info("Successfully published message to topic", "topic", destinationTopic)
 			}
 
 			// Complete the message (remove from queue)

@@ -3,11 +3,12 @@ package config
 import (
 	"bytes"
 	"fmt"
-	"github.com/katasec/dstream/internal/logging"
 	"os"
 	"path/filepath"
 	"text/template"
 	"time"
+
+	"github.com/katasec/dstream/internal/logging"
 
 	"github.com/Masterminds/sprig"
 	"github.com/hashicorp/hcl/v2"
@@ -19,8 +20,8 @@ var log = logging.GetLogger()
 
 // Config holds the entire configuration as represented in the HCL file
 type Config struct {
-	Ingester  Ingester  `hcl:"ingester,block"`
-	Publisher Publisher `hcl:"publisher,block"`
+	Ingester Ingester `hcl:"ingester,block"`
+	Router   Router   `hcl:"router,block"`
 }
 
 type Ingester struct {
@@ -36,11 +37,11 @@ type Ingester struct {
 }
 
 type ResolvedTableConfig struct {
-	Name              string
-	PollInterval      string
-	MaxPollInterval   string
+	Name               string
+	PollInterval       string
+	MaxPollInterval    string
 	DBConnectionString string
-	Output            OutputConfig
+	Output             OutputConfig
 }
 
 // GetPollInterval returns the PollInterval as a time.Duration
@@ -81,7 +82,7 @@ type TableOverride struct {
 	MaxPollInterval *string `hcl:"max_poll_interval,optional"`
 }
 
-type Publisher struct {
+type Router struct {
 	Source SourceConfig `hcl:"source,block"` // e.g., "EventHub", "ServiceBus", "Console"
 	Output OutputConfig `hcl:"output,block"`
 }
@@ -135,11 +136,11 @@ func LoadConfig(filePath string) (*Config, error) {
 	resolvedTables := []ResolvedTableConfig{}
 	for _, tableName := range config.Ingester.RawTables {
 		resolvedTable := ResolvedTableConfig{
-			Name:              tableName,
-			PollInterval:      config.Ingester.PollIntervalDefaults.PollInterval,
-			MaxPollInterval:   config.Ingester.PollIntervalDefaults.MaxPollInterval,
+			Name:               tableName,
+			PollInterval:       config.Ingester.PollIntervalDefaults.PollInterval,
+			MaxPollInterval:    config.Ingester.PollIntervalDefaults.MaxPollInterval,
 			DBConnectionString: config.Ingester.DBConnectionString,
-			Output:            config.Publisher.Output,
+			Output:             config.Router.Output,
 		}
 
 		// Check for overrides
