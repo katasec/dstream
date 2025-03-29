@@ -8,15 +8,11 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/katasec/dstream/internal/logging"
-
 	"github.com/Masterminds/sprig"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
-
-var log = logging.GetLogger()
 
 // Config holds the entire configuration as represented in the HCL file
 type Config struct {
