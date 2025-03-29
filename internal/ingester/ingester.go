@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
@@ -48,19 +49,17 @@ type Ingester struct {
 //
 // The Ingester is created in a ready state but doesn't start any processing
 // until the Start method is explicitly called.
-func NewIngester() *Ingester {
-
+func NewIngester() (*Ingester, error) {
 	config := config.NewConfig()
-	config.CheckConfig()
+	config.CheckConfig() // This will exit if config is invalid
 
 	// Connect to the database
 	dbConn, err := db.Connect(config.Ingester.DBConnectionString)
 	if err != nil {
-		log.Error("Failed to connect to database", "error", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Initialize LeaseDBManager
+	// Initialize LeaseDBManager with default interval
 	monitor := monitoring.NewMonitor(time.Second * 60)
 
 	// Initialize LockerFactory with config and LeaseDBManager
@@ -76,7 +75,7 @@ func NewIngester() *Ingester {
 		lockerFactory: lockerFactory,
 		wg:            &sync.WaitGroup{},
 		monitor:       monitor,
-	}
+	}, nil
 }
 
 // Start initializes the TableMonitoringOrchestrator and begins monitoring each table in the config.
