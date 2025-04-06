@@ -11,6 +11,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	_ "github.com/denisenkom/go-mssqldb" // SQL Server driver
+	"github.com/katasec/dstream/internal/logging"
 	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
 )
 
@@ -71,6 +72,14 @@ func (c *Config) checkDatabaseCDCEnabled() (bool, error) {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// Test the connection
+	err = db.Ping()
+	if err != nil {
+		logging.GetLogger().Error("Failed to ping database", "error", err)
+	} else {
+		logging.GetLogger().Debug("Successfully pinged database")
+	}
 
 	query := `SELECT is_cdc_enabled FROM sys.databases WHERE name = DB_NAME();`
 	var isEnabled bool
