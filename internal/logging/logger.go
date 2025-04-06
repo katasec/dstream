@@ -22,7 +22,7 @@ const (
 	colorReset = "\033[0m"
 	colorDebug = "\033[38;5;215m" // Debug - soft orange
 	colorInfo  = "\033[38;5;78m"  // Info - brighter leafy green
-	colorWarn  = "\033[38;5;178m" // Warn - earthy amber
+	colorWarn  = "\033[38;5;220m" // kind of an amber/golden sand
 	colorError = "\033[38;5;167m" // Error - toned-down crimson
 )
 

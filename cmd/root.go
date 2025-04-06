@@ -21,12 +21,7 @@ var rootCmd = &cobra.Command{
 	Short: "DStream - A data streaming tool",
 	Long:  `DStream is a tool for streaming data changes from SQL Server using Change Data Capture (CDC) and publishing them to various destinations.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if logLevel == "" {
-			logLevel = strings.ToLower(os.Getenv("DSTREAM_LOG_LEVEL"))
-			if logLevel == "" {
-				logLevel = "info" // final fallback
-			}
-		}
+		logLevel = resolveLogLevel()
 		logging.SetLogLevel(logLevel)
 		logging.GetLogger().Info("Log level set to", "level", logLevel)
 	},
@@ -45,4 +40,15 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func resolveLogLevel() string {
+	if logLevel == "" {
+		logLevel = strings.ToLower(os.Getenv("DSTREAM_LOG_LEVEL"))
+		if logLevel == "" {
+			logLevel = "info" // final fallback
+		}
+	}
+
+	return logLevel
 }
