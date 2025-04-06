@@ -164,7 +164,7 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
         ORDER BY ct.__$start_lsn
     `, batchSize, columnList, monitor.tableName)
 
-	log.Info(query)
+	log.Debug(query)
 	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
@@ -241,7 +241,7 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		WHERE TABLE_NAME = @tableName 
 		AND TABLE_SCHEMA = 'dbo'`
 
-	log.Info(strings.Replace(query, "@tableName", "'"+tableName+"'", 1))
+	log.Debug(strings.Replace(query, "@tableName", "'"+tableName+"'", 1))
 
 	rows, err := db.Query(query, sql.Named("tableName", tableName))
 
@@ -256,7 +256,7 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		if err := rows.Scan(&columnName); err != nil {
 			return nil, err
 		}
-		log.Info("Found column", "name", columnName)
+		log.Debug("Found column", "name", columnName)
 		columns = append(columns, columnName)
 	}
 	log.Info("Total columns found", "table", tableName, "columns", columns)

@@ -28,9 +28,9 @@ func (m *Monitor) Start() {
 	for {
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
-		log.Info("Number of Goroutines:", "Num", runtime.NumGoroutine())
-		log.Info("Total Memory Allocated: ", "Alloc in MB", memStats.Alloc/1024/1024)
-		log.Info("Total Memory System: ", "Sys in MB", memStats.Sys/1024/1024)
+		log.Debug("Number of Goroutines:", "Num", runtime.NumGoroutine())
+		log.Debug("Total Memory Allocated: ", "Alloc in MB", memStats.Alloc/1024/1024)
+		log.Debug("Total Memory System: ", "Sys in MB", memStats.Sys/1024/1024)
 		time.Sleep(m.interval)
 	}
 }
