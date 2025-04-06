@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"math/rand"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestSimplePersonChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get database name: %v", err)
 	}
-	if dbName != "TestDB" {
+	if strings.ToLower(dbName) != strings.ToLower("TestDB") {
 		t.Fatalf("Expected to be connected to TestDB, but connected to %s", dbName)
 	}
 	t.Logf("Connected to database: %s", dbName)
@@ -102,7 +103,7 @@ func TestSimplePersonChanges(t *testing.T) {
 
 	// Insert multiple persons based on numPersonsToInsert
 	t.Logf("Inserting %d new persons...", numPersonsToInsert)
-	
+
 	for i := 0; i < numPersonsToInsert; i++ {
 		firstName, lastName := generateRandomPerson(rng)
 		result, err := testDB.DB.Exec(`
@@ -114,7 +115,7 @@ func TestSimplePersonChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to insert person: %v", err)
 		}
-		
+
 		// Check if the insert was successful
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
@@ -123,7 +124,7 @@ func TestSimplePersonChanges(t *testing.T) {
 		if rowsAffected != 1 {
 			t.Fatalf("Expected 1 row to be affected, got %d", rowsAffected)
 		}
-		
+
 		t.Logf("Inserted: %s %s", firstName, lastName)
 	}
 
@@ -135,7 +136,7 @@ func TestSimplePersonChanges(t *testing.T) {
 	}
 	t.Logf("Final person count: %d (should be %d more than initial)", finalCount, numPersonsToInsert)
 
-	if finalCount != initialCount + numPersonsToInsert {
-		t.Errorf("Expected %d persons, got %d", initialCount + numPersonsToInsert, finalCount)
+	if finalCount != initialCount+numPersonsToInsert {
+		t.Errorf("Expected %d persons, got %d", initialCount+numPersonsToInsert, finalCount)
 	}
 }
