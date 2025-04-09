@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/katasec/dstream/internal/publisher"
 	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
+	publishertypes "github.com/katasec/dstream/internal/types/publisher"
 	"github.com/katasec/dstream/pkg/cdc"
 )
 
@@ -15,13 +15,13 @@ var _ cdc.ChangePublisher = (*ChangeDataPublisher)(nil)
 // ChangeDataPublisher handles the publishing of CDC change data to messaging systems
 // It enriches CDC data with routing information and uses a ChangeDataTransport for delivery
 type ChangeDataPublisher struct {
-	transport    publisher.ChangeDataTransport
+	transport    publishertypes.ChangeDataTransport
 	queueName    string
 	dbConnString string
 }
 
 // NewChangeDataPublisher creates a new ChangeDataPublisher
-func NewChangeDataPublisher(transport publisher.ChangeDataTransport, queueName string, dbConnString string) *ChangeDataPublisher {
+func NewChangeDataPublisher(transport publishertypes.ChangeDataTransport, queueName string, dbConnString string) *ChangeDataPublisher {
 	return &ChangeDataPublisher{
 		transport:    transport,
 		queueName:    queueName,
@@ -29,23 +29,21 @@ func NewChangeDataPublisher(transport publisher.ChangeDataTransport, queueName s
 	}
 }
 
-
-
 // PublishChanges implements cdc.ChangePublisher
 func (p *ChangeDataPublisher) PublishChanges(changes []map[string]interface{}) (<-chan bool, error) {
 	// Create a channel to signal successful publish
 	doneChan := make(chan bool, 1)
-	
+
 	// If no changes, return immediately with success
 	if len(changes) == 0 {
 		doneChan <- true
 		close(doneChan)
 		return doneChan, nil
 	}
-	
+
 	// Process all changes in the batch
 	var messages []interface{}
-	
+
 	// First, validate and enrich all messages
 	for _, data := range changes {
 		// Get database connection string and table name from metadata
@@ -79,7 +77,7 @@ func (p *ChangeDataPublisher) PublishChanges(changes []map[string]interface{}) (
 			close(doneChan)
 			return doneChan, err
 		}
-		
+
 		// Add the JSON data to our batch
 		messages = append(messages, jsonData)
 	}

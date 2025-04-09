@@ -13,6 +13,7 @@ import (
 	"github.com/katasec/dstream/internal/logging"
 	"github.com/katasec/dstream/internal/publisher"
 	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
+	publishertypes "github.com/katasec/dstream/internal/types/publisher"
 )
 
 var log = logging.GetLogger()
@@ -20,9 +21,9 @@ var log = logging.GetLogger()
 // Router handles routing messages from the ingest queue to their destination topics
 type Router struct {
 	config     *config.Config
-	transport  publisher.ChangeDataTransport
-	transports map[string]publisher.ChangeDataTransport // Cache of topic transports
-	lock       sync.RWMutex                             // Lock for transports map
+	transport  publishertypes.ChangeDataTransport
+	transports map[string]publishertypes.ChangeDataTransport // Cache of topic transports
+	lock       sync.RWMutex                                  // Lock for transports map
 }
 
 // NewRouter creates a new Router instance
@@ -42,7 +43,7 @@ func NewRouter(cfg *config.Config) (*Router, error) {
 	r := &Router{
 		config:     cfg,
 		transport:  baseTransport,
-		transports: make(map[string]publisher.ChangeDataTransport),
+		transports: make(map[string]publishertypes.ChangeDataTransport),
 	}
 
 	// Pre-create transports for all tables in config

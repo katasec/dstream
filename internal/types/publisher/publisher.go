@@ -1,4 +1,4 @@
-package types
+package publishertypes
 
 import (
 	"context"
@@ -23,16 +23,12 @@ type ChangeDataTransport interface {
 	Close() error
 }
 
-
-
 // ServiceBusChangeDataTransport defines the interface for transporting change data to Azure Service Bus
 type ServiceBusChangeDataTransport interface {
 	ChangeDataTransport
 	// PublishServiceBusMessage publishes a Service Bus message
 	PublishServiceBusMessage(ctx context.Context, message *azservicebus.ReceivedMessage) error
 }
-
-
 
 // Type represents the type of publisher
 type Type string
@@ -54,3 +50,43 @@ const (
 	Console Type = "console"
 	Memory  Type = "memory"
 )
+
+// Publisher wraps all supported publisher types
+var Publisher = struct {
+
+	// Messaging publishers
+	AzureServiceBus Type
+	AzureEventHub   Type
+
+	// Storage publishers
+	AzureBlob Type
+	AwsS3     Type
+
+	// Database publishers
+	SQLDatabase Type
+	MongoDB     Type
+
+	// Debug publishers
+	Console Type
+	Memory  Type
+
+	// Interfaces (Typed nils just to provide named access – not functional)
+	ChangeDataTransport           ChangeDataTransport
+	ServiceBusChangeDataTransport ServiceBusChangeDataTransport
+}{
+	AzureServiceBus: "azure_service_bus",
+	AzureEventHub:   "azure_event_hub",
+
+	AzureBlob: "azure_blob",
+	AwsS3:     "aws_s3",
+
+	SQLDatabase: "sql_database",
+	MongoDB:     "mongodb",
+
+	Console: "console",
+	Memory:  "memory",
+
+	// Typed nils – for namespacing purposes only
+	ChangeDataTransport:           nil,
+	ServiceBusChangeDataTransport: nil,
+}

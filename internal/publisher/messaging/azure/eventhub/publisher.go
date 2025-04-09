@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/katasec/dstream/internal/logging"
-	"github.com/katasec/dstream/internal/types"
+	publishertypes "github.com/katasec/dstream/internal/types/publisher"
 )
 
 var log = logging.GetLogger()
@@ -23,7 +23,7 @@ func NewEventHubChangeDataTransport(connectionString string) *EventHubChangeData
 }
 
 // Create creates a new transport for a specific destination
-func (p *EventHubChangeDataTransport) Create(destination string) (types.ChangeDataTransport, error) {
+func (p *EventHubChangeDataTransport) Create(destination string) (publishertypes.ChangeDataTransport, error) {
 	return NewEventHubChangeDataTransport(p.connectionString), nil
 }
 
@@ -32,9 +32,9 @@ func (p *EventHubChangeDataTransport) PublishBatch(ctx context.Context, messages
 	if len(messages) == 0 {
 		return nil // Nothing to publish
 	}
-	
+
 	log.Info("Publishing batch to EventHub", "batchSize", len(messages))
-	
+
 	// Process each message in the batch
 	for _, message := range messages {
 		switch msg := message.(type) {
@@ -46,7 +46,7 @@ func (p *EventHubChangeDataTransport) PublishBatch(ctx context.Context, messages
 			return fmt.Errorf("unsupported message type: %T", message)
 		}
 	}
-	
+
 	return nil
 }
 
