@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/katasec/dstream/internal/logging"
-	"github.com/katasec/dstream/internal/types"
+	publishertypes "github.com/katasec/dstream/internal/types/publisher"
 )
 
 var log = logging.GetLogger()
@@ -21,7 +21,7 @@ func NewConsoleChangeDataTransport() *ConsoleChangeDataTransport {
 }
 
 // Create creates a new transport for a specific destination
-func (p *ConsoleChangeDataTransport) Create(destination string) (types.ChangeDataTransport, error) {
+func (p *ConsoleChangeDataTransport) Create(destination string) (publishertypes.ChangeDataTransport, error) {
 	return NewConsoleChangeDataTransport(), nil
 }
 
@@ -30,9 +30,9 @@ func (p *ConsoleChangeDataTransport) PublishBatch(ctx context.Context, messages 
 	if len(messages) == 0 {
 		return nil // Nothing to publish
 	}
-	
+
 	log.Info("Publishing batch to console", "batchSize", len(messages))
-	
+
 	// Process each message in the batch
 	for i, message := range messages {
 		var data []byte
@@ -52,7 +52,7 @@ func (p *ConsoleChangeDataTransport) PublishBatch(ctx context.Context, messages 
 		log.Info(fmt.Sprintf("Message %d/%d:", i+1, len(messages)))
 		log.Info(prettyJSON.String())
 	}
-	
+
 	return nil
 }
 

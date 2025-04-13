@@ -2,11 +2,16 @@ package config
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	_ "github.com/denisenkom/go-mssqldb" // SQL Server driver
+	"github.com/katasec/dstream/internal/logging"
 	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
 )
 
@@ -18,14 +23,14 @@ func (c *Config) CheckConfig() {
 	}
 
 	// Validate Output configuration
-	switch strings.ToLower(c.Publisher.Output.Type) {
+	switch strings.ToLower(c.Router.Output.Type) {
 	case "azure_service_bus":
 		c.serviceBusConfigCheck()
 	case "console":
 		// Console output type doesn't need a connection string
 		log.Debug("Output set to console; no additional connection string required")
 	default:
-		log.Error("Unknown output type", "type", c.Publisher.Output.Type)
+		log.Error("Unknown output type", "type", c.Router.Output.Type)
 		os.Exit(1)
 	}
 
@@ -46,6 +51,56 @@ func (c *Config) CheckConfig() {
 		os.Exit(1)
 	}
 
+	isEnabled, err := c.checkDatabaseCDCEnabled()
+	if err != nil {
+		log.Error("Failed to check CDC status", "error", err)
+		os.Exit(1)
+	}
+	if !isEnabled {
+		log.Error("CDC is not enabled for the database")
+		os.Exit(1)
+	}
+}
+
+// checkDatabaseCDCEnabled queries the database to verify if CDC is enabled at the database level.
+// It logs the status and returns true if enabled, false otherwise, along with any error.
+func (c *Config) checkDatabaseCDCEnabled() (bool, error) {
+	// Check if CDC is enabled at the database level
+	db, err := sql.Open("sqlserver", c.Ingester.DBConnectionString)
+	if err != nil {
+		log.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// Test the connection
+	err = db.Ping()
+	if err != nil {
+		logging.GetLogger().Error("Failed to ping database", "error", err)
+	} else {
+		logging.GetLogger().Debug("Successfully pinged database")
+	}
+
+	query := `SELECT is_cdc_enabled FROM sys.databases WHERE name = DB_NAME();`
+	var isEnabled bool
+
+	// Use a short context for this check
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = db.QueryRowContext(ctx, query).Scan(&isEnabled)
+	if err != nil {
+		log.Error("Failed to query database for CDC status", "error", err)
+		return false, fmt.Errorf("error checking database CDC status: %w", err)
+	}
+
+	if !isEnabled {
+		log.Error("CDC is NOT enabled for the database specified in DBConnectionString.")
+		return false, fmt.Errorf("CDC is not enabled for the database")
+	}
+
+	log.Info("CDC is enabled for the database.")
+	return true, nil
 }
 
 // validateBlobLockConfig validates the Azure Blob configuration for locks
@@ -85,8 +140,8 @@ func (c *Config) validateBlobLockConfig() {
 // serviceBusConfigCheck validates the Service Bus configuration and ensures topics exist for each table
 func (c *Config) serviceBusConfigCheck() {
 
-	connectionString := c.Publisher.Output.ConnectionString
-	publisherType := c.Publisher.Output.Type
+	connectionString := c.Router.Output.ConnectionString
+	publisherType := c.Router.Output.Type
 
 	if connectionString == "" {
 		log.Error("Connection string required", "type", publisherType)

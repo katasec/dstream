@@ -9,12 +9,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/katasec/dstream/internal/logging"
-	"github.com/katasec/dstream/internal/types"
+	publishertypes "github.com/katasec/dstream/internal/types/publisher"
 )
 
 var log = logging.GetLogger()
 
-// ServiceBusChangeDataTransport implements types.ServiceBusChangeDataTransport, transports change data messages to Azure Service Bus
+// ServiceBusChangeDataTransport implements publishertypes.ChangeDataTransport
+// transports change data messages to an Azure Service Bus
 type ServiceBusChangeDataTransport struct {
 	connectionString string
 	client           *azservicebus.Client
@@ -24,10 +25,6 @@ type ServiceBusChangeDataTransport struct {
 	batchSize        int
 	batchQueue       chan map[string]interface{}
 }
-
-
-
-
 
 // NewServiceBusChangeDataTransport creates a new ServiceBusChangeDataTransport with the provided connection string and entity name
 func NewServiceBusChangeDataTransport(connectionString, entityName string, isQueue bool) (*ServiceBusChangeDataTransport, error) {
@@ -59,7 +56,7 @@ func NewServiceBusChangeDataTransport(connectionString, entityName string, isQue
 }
 
 // Create creates a new transport for a specific destination
-func (p *ServiceBusChangeDataTransport) Create(destination string) (types.ChangeDataTransport, error) {
+func (p *ServiceBusChangeDataTransport) Create(destination string) (publishertypes.ChangeDataTransport, error) {
 	return NewServiceBusChangeDataTransport(p.connectionString, destination, p.isQueue)
 }
 
@@ -68,28 +65,28 @@ func (p *ServiceBusChangeDataTransport) PublishBatch(ctx context.Context, messag
 	if len(messages) == 0 {
 		return nil // Nothing to publish
 	}
-	
+
 	// Create a message batch
 	messageBatch, err := p.sender.NewMessageBatch(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create message batch: %w", err)
 	}
-	
+
 	// Convert messages to Service Bus messages and add them to the batch
 	for _, message := range messages {
 		var sbMessage *azservicebus.Message
-		
+
 		switch msg := message.(type) {
 		case *azservicebus.ReceivedMessage:
 			// Create a new message with the same body and properties
 			sbMessage = &azservicebus.Message{
-				Body:                 msg.Body,
+				Body:                  msg.Body,
 				ApplicationProperties: msg.ApplicationProperties,
-				ContentType:          msg.ContentType,
-				CorrelationID:        msg.CorrelationID,
-				MessageID:            &msg.MessageID,
-				Subject:              msg.Subject,
-				To:                   msg.To,
+				ContentType:           msg.ContentType,
+				CorrelationID:         msg.CorrelationID,
+				MessageID:             &msg.MessageID,
+				Subject:               msg.Subject,
+				To:                    msg.To,
 			}
 		case []byte:
 			// Create a message with the byte array body
@@ -99,7 +96,7 @@ func (p *ServiceBusChangeDataTransport) PublishBatch(ctx context.Context, messag
 		default:
 			return fmt.Errorf("unsupported message type: %T", message)
 		}
-		
+
 		// Try to add the message to the batch
 		if err := messageBatch.AddMessage(sbMessage, nil); err != nil {
 			// If the batch is full, send it and create a new one
@@ -108,19 +105,19 @@ func (p *ServiceBusChangeDataTransport) PublishBatch(ctx context.Context, messag
 				if messageBatch.NumMessages() == 0 {
 					return fmt.Errorf("message too large for any batch: %w", err)
 				}
-				
+
 				// Send the current batch
 				log.Info("Batch full, sending current batch", "messageCount", messageBatch.NumMessages())
 				if err := p.sender.SendMessageBatch(ctx, messageBatch, nil); err != nil {
 					return fmt.Errorf("failed to send message batch: %w", err)
 				}
-				
+
 				// Create a new batch
 				messageBatch, err = p.sender.NewMessageBatch(ctx, nil)
 				if err != nil {
 					return fmt.Errorf("failed to create new message batch: %w", err)
 				}
-				
+
 				// Try to add the message to the new batch
 				if err := messageBatch.AddMessage(sbMessage, nil); err != nil {
 					return fmt.Errorf("message too large for a new batch: %w", err)
@@ -130,7 +127,7 @@ func (p *ServiceBusChangeDataTransport) PublishBatch(ctx context.Context, messag
 			}
 		}
 	}
-	
+
 	// Send the final batch if it contains any messages
 	if messageBatch.NumMessages() > 0 {
 		log.Info("Sending final batch", "messageCount", messageBatch.NumMessages())
@@ -138,7 +135,7 @@ func (p *ServiceBusChangeDataTransport) PublishBatch(ctx context.Context, messag
 			return fmt.Errorf("failed to send final message batch: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -190,7 +187,7 @@ func (p *ServiceBusChangeDataTransport) processMessages() {
 				log.Error("Failed to marshal message", "error", err)
 				continue
 			}
-			
+
 			// Add the JSON bytes to the batch
 			batch = append(batch, data)
 			if len(batch) >= p.batchSize {
@@ -209,7 +206,7 @@ func (p *ServiceBusChangeDataTransport) processMessages() {
 // sendBatch sends a batch of messages to the Service Bus topic
 func (p *ServiceBusChangeDataTransport) sendBatch(batch []interface{}) {
 	ctx := context.Background()
-	
+
 	// Use our new PublishBatch method which handles all the batch logic
 	if err := p.PublishBatch(ctx, batch); err != nil {
 		log.Error("Failed to publish batch", "error", err, "batchSize", len(batch))

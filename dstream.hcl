@@ -26,7 +26,9 @@ ingester {
 
     # List of tables
     tables = [
-        "Persons"
+        "Persons",
+        "Cars",
+        "Hello"
     ]
 
     # Table-specific overrides
@@ -39,7 +41,7 @@ ingester {
     }
 }
 
-publisher {
+router {
     source {
         type = "azure_service_bus"
         connection_string = "{{ env "DSTREAM_PUBLISHER_CONNECTION_STRING" }}"  # Used if type is "eventhub" or "servicebus"            

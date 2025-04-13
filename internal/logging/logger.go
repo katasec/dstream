@@ -19,11 +19,11 @@ const (
 	LevelError
 
 	// ANSI color codes
-	colorReset  = "\033[0m"
-	colorGray   = "\033[38;5;242m" // Debug
-	colorGreen  = "\033[38;5;46m"  // Info
-	colorYellow = "\033[38;5;220m" // Warn
-	colorRed    = "\033[38;5;196m" // Error
+	colorReset = "\033[0m"
+	colorDebug = "\033[38;5;215m" // Debug - soft orange
+	colorInfo  = "\033[38;5;78m"  // Info - brighter leafy green
+	colorWarn  = "\033[38;5;220m" // kind of an amber/golden sand
+	colorError = "\033[38;5;167m" // Error - toned-down crimson
 )
 
 var (
@@ -68,7 +68,7 @@ func SetupLogging() {
 		// Get log level from environment
 		logLevel := getLogLevel()
 
-			// Create loggers for each level with appropriate prefixes and colors
+		// Create loggers for each level with appropriate prefixes and colors
 		debugLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 		infoLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 		warnLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
@@ -129,7 +129,7 @@ func formatMessage(msg string, args ...any) string {
 // Printf provides compatibility with standard log.Printf
 func (l *stdLogger) Printf(format string, v ...any) {
 	if l.logLevel <= LevelInfo {
-		l.info.Printf("%s[INFO]%s %s", colorGreen, colorReset, fmt.Sprintf(format, v...))
+		l.info.Printf("%s[INFO]%s %s", colorInfo, colorReset, fmt.Sprintf(format, v...))
 	}
 }
 
@@ -139,34 +139,53 @@ func (l *stdLogger) Println(v ...any) {
 		message := fmt.Sprintln(v...)
 		// Remove trailing newline that fmt.Sprintln adds
 		message = strings.TrimSuffix(message, "\n")
-		l.info.Printf("%s[INFO]%s %s", colorGreen, colorReset, message)
+		l.info.Printf("%s[INFO]%s %s", colorInfo, colorReset, message)
 	}
 }
 
 // Debug logs a debug message
 func (l *stdLogger) Debug(msg string, args ...any) {
 	if l.logLevel <= LevelDebug {
-		l.debug.Printf("%s[DEBUG]%s %s", colorGray, colorReset, formatMessage(msg, args...))
+		l.debug.Printf("%s[DEBUG]%s %s", colorDebug, colorReset, formatMessage(msg, args...))
 	}
 }
 
 // Info logs an info message
 func (l *stdLogger) Info(msg string, args ...any) {
 	if l.logLevel <= LevelInfo {
-		l.info.Printf("%s[INFO]%s %s", colorGreen, colorReset, formatMessage(msg, args...))
+		l.info.Printf("%s[INFO]%s %s", colorInfo, colorReset, formatMessage(msg, args...))
 	}
 }
 
 // Warn logs a warning message
 func (l *stdLogger) Warn(msg string, args ...any) {
 	if l.logLevel <= LevelWarn {
-		l.warn.Printf("%s[WARN]%s %s", colorYellow, colorReset, formatMessage(msg, args...))
+		l.warn.Printf("%s[WARN]%s %s", colorWarn, colorReset, formatMessage(msg, args...))
 	}
 }
 
 // Error logs an error message
 func (l *stdLogger) Error(msg string, args ...any) {
 	if l.logLevel <= LevelError {
-		l.error.Printf("%s[ERROR]%s %s", colorRed, colorReset, formatMessage(msg, args...))
+		l.error.Printf("%s[ERROR]%s %s", colorError, colorReset, formatMessage(msg, args...))
+	}
+}
+
+// SetLogLevel updates the log level of the global logger at runtime
+func SetLogLevel(level string) {
+	var lvl LogLevel
+	switch strings.ToLower(level) {
+	case "debug":
+		lvl = LevelDebug
+	case "warn":
+		lvl = LevelWarn
+	case "error":
+		lvl = LevelError
+	default:
+		lvl = LevelInfo
+	}
+
+	if logger, ok := globalLogger.(*stdLogger); ok {
+		logger.logLevel = lvl
 	}
 }

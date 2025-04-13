@@ -18,6 +18,8 @@ func Connect(connectionString string) (*sql.DB, error) {
 	err = db.Ping()
 	if err != nil {
 		return nil, fmt.Errorf("failed to ping database: %v", err)
+	} else {
+		logging.GetLogger().Info("Successfully pinged database")
 	}
 
 	var log = logging.GetLogger()

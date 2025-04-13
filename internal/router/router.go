@@ -13,6 +13,7 @@ import (
 	"github.com/katasec/dstream/internal/logging"
 	"github.com/katasec/dstream/internal/publisher"
 	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
+	publishertypes "github.com/katasec/dstream/internal/types/publisher"
 )
 
 var log = logging.GetLogger()
@@ -20,17 +21,17 @@ var log = logging.GetLogger()
 // Router handles routing messages from the ingest queue to their destination topics
 type Router struct {
 	config     *config.Config
-	transport  publisher.ChangeDataTransport
-	transports map[string]publisher.ChangeDataTransport // Cache of topic transports
-	lock       sync.RWMutex                           // Lock for transports map
+	transport  publishertypes.ChangeDataTransport
+	transports map[string]publishertypes.ChangeDataTransport // Cache of topic transports
+	lock       sync.RWMutex                                  // Lock for transports map
 }
 
 // NewRouter creates a new Router instance
 func NewRouter(cfg *config.Config) (*Router, error) {
 	// Initialize the transport based on configuration
 	factory := publisher.NewFactory(
-		cfg.Publisher.Output.Type,
-		cfg.Publisher.Output.ConnectionString,
+		cfg.Router.Output.Type,
+		cfg.Router.Output.ConnectionString,
 		cfg.Ingester.DBConnectionString,
 	)
 
@@ -42,7 +43,7 @@ func NewRouter(cfg *config.Config) (*Router, error) {
 	r := &Router{
 		config:     cfg,
 		transport:  baseTransport,
-		transports: make(map[string]publisher.ChangeDataTransport),
+		transports: make(map[string]publishertypes.ChangeDataTransport),
 	}
 
 	// Pre-create transports for all tables in config
@@ -101,8 +102,6 @@ func (r *Router) routeMessages(ctx context.Context) error {
 	}
 	defer receiver.Close(ctx)
 
-
-
 	log.Info("Started routing messages from ingest queue")
 
 	for {
@@ -113,6 +112,14 @@ func (r *Router) routeMessages(ctx context.Context) error {
 			// Receive message from the queue
 			msg, err := receiver.ReceiveMessages(ctx, 1, nil)
 			if err != nil {
+
+				// Check if the error is due to context cancellation
+				if ctx.Err() == context.Canceled {
+					log.Info("Context canceled during message reception, exiting gracefully")
+					return nil
+				}
+
+				// Log the error and continue
 				log.Error("Failed to receive message", "error", err)
 				continue
 			}
@@ -162,6 +169,8 @@ func (r *Router) routeMessages(ctx context.Context) error {
 			if err := topicTransport.PublishBatch(ctx, []interface{}{msg[0]}); err != nil {
 				log.Error("Failed to publish message to topic", "topic", destinationTopic, "error", err)
 				continue
+			} else {
+				log.Info("Successfully published message to topic", "topic", destinationTopic)
 			}
 
 			// Complete the message (remove from queue)

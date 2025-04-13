@@ -25,7 +25,7 @@ type SqlServerTableMonitor struct {
 	lsnMutex        sync.Mutex
 	checkpointMgr   *CheckpointManager
 	publisher       cdc.ChangePublisher
-	columns         []string    // Cached column names
+	columnNames     []string    // Cached column names
 	batchSizer      *BatchSizer // Determines optimal batch size
 }
 
@@ -50,7 +50,7 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 		maxPollInterval: maxPollInterval,
 		lastLSNs:        make(map[string][]byte),
 		checkpointMgr:   checkpointMgr,
-		columns:         columns,
+		columnNames:     columns,
 		publisher:       publisher,
 		batchSizer:      batchSizer,
 	}
@@ -149,12 +149,12 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 
 	// Get the optimal batch size from BatchSizer
 	batchSize := monitor.batchSizer.GetBatchSize()
-	log.Info("Using batch size", "table", monitor.tableName, "batchSize", batchSize)
+	//log.Info("Using batch size", "table", monitor.tableName, "batchSize", batchSize)
 
 	// Use cached column names
 	columnList := "ct.__$start_lsn, ct.__$operation"
-	if len(monitor.columns) > 0 {
-		columnList += ", " + strings.Join(monitor.columns, ", ")
+	if len(monitor.columnNames) > 0 {
+		columnList += ", " + strings.Join(monitor.columnNames, ", ")
 	}
 
 	query := fmt.Sprintf(`
@@ -164,8 +164,9 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
         ORDER BY ct.__$start_lsn
     `, batchSize, columnList, monitor.tableName)
 
-	log.Info(query)
+	log.Debug(query)
 	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
+	log.Debug("Query executed", "query", query, "lastLSN", hex.EncodeToString(lastLSN))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
 	}
@@ -175,47 +176,28 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 	var latestLSN []byte
 
 	for rows.Next() {
-		var lsn []byte
-		var operation int
-		columnData := make([]interface{}, len(monitor.columns)+2)
-		columnData[0] = &lsn
-		columnData[1] = &operation
-		for i := range monitor.columns {
-			var colValue sql.NullString
-			columnData[i+2] = &colValue
-		}
 
+		// Prepare a slice of pointers for the columns
+		columnData, lsn, operation := monitor.prepareScanTargets()
+
+		// Scan the row into the columnData slice
 		if err := rows.Scan(columnData...); err != nil {
 			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
 		// Determine the operation type as a string
-		var operationType string
-		switch operation {
-		case 2:
-			operationType = "Insert"
-		case 4:
-			operationType = "Update"
-		case 1:
-			operationType = "Delete"
-		default:
-			continue // Skip any unknown operation types
+		operationType, ok := getOperationType(operation)
+		if !ok {
+			continue // Unknown operation, skip it
 		}
 
 		// Organize metadata and data separately in the output
-		data := make(map[string]interface{})
-		for i, colName := range monitor.columns {
-			if colValue, ok := columnData[i+2].(*sql.NullString); ok && colValue.Valid {
-				data[colName] = colValue.String
-			} else {
-				data[colName] = nil
-			}
-		}
+		data := extractColumnData(monitor.columnNames, columnData)
 
 		change := map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"TableName":     monitor.tableName,
-				"LSN":           hex.EncodeToString(lsn),
+				"LSN":           hex.EncodeToString(*lsn),
 				"OperationID":   operation,
 				"OperationType": operationType,
 			},
@@ -223,7 +205,7 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 		}
 
 		changes = append(changes, change)
-		latestLSN = lsn
+		latestLSN = *lsn
 	}
 
 	// Return the changes and latest LSN without saving the checkpoint yet
@@ -241,7 +223,7 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		WHERE TABLE_NAME = @tableName 
 		AND TABLE_SCHEMA = 'dbo'`
 
-	log.Info(strings.Replace(query, "@tableName", "'"+tableName+"'", 1))
+	log.Debug(strings.Replace(query, "@tableName", "'"+tableName+"'", 1))
 
 	rows, err := db.Query(query, sql.Named("tableName", tableName))
 
@@ -256,9 +238,66 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 		if err := rows.Scan(&columnName); err != nil {
 			return nil, err
 		}
-		log.Info("Found column", "name", columnName)
+		log.Debug("Found column", "name", columnName)
 		columns = append(columns, columnName)
 	}
 	log.Info("Total columns found", "table", tableName, "columns", columns)
 	return columns, rows.Err()
+}
+
+func (monitor *SqlServerTableMonitor) prepareScanTargets() ([]any, *[]byte, *int) {
+
+	var lsn []byte
+	var operation int
+
+	// Prepare a slice of pointers for the columns
+	columnData := make([]any, len(monitor.columnNames)+2)
+	columnData[0] = &lsn
+	columnData[1] = &operation
+
+	// Prepare a slice of sql.NullString for the rest of the columns
+	columnValues := make([]sql.NullString, len(monitor.columnNames))
+	for i := range monitor.columnNames {
+		columnData[i+2] = &columnValues[i]
+	}
+
+	return columnData, &lsn, &operation
+}
+
+func getOperationType(op *int) (string, bool) {
+	if op == nil {
+		return "", false
+	}
+	switch *op {
+	case 2:
+		return "Insert", true
+	case 4:
+		return "Update", true
+	case 1:
+		return "Delete", true
+	default:
+		return "", false
+	}
+}
+
+func extractColumnData(columnNames []string, columnData []any) map[string]any {
+
+	// Create a map to hold the column data
+	data := make(map[string]any, len(columnNames))
+
+	// Note that the first two columns are LSN and operation
+	// The rest are the actual column values
+	// We start from index 2 to skip LSN and operation
+	for i, name := range columnNames {
+		raw := columnData[i+2]
+		columnValue, ok := raw.(*sql.NullString)
+
+		if ok && columnValue.Valid {
+			data[name] = columnValue.String
+		} else {
+			data[name] = nil
+		}
+	}
+
+	return data
 }
