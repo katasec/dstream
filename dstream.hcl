@@ -26,7 +26,9 @@ ingester {
 
     # List of tables
     tables = [
-        "Persons"
+        "Persons",
+        "Cars",
+        "Hello"
     ]
 
     # Table-specific overrides

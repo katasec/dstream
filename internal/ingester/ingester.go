@@ -111,7 +111,7 @@ func (i *Ingester) Start() error {
 	// Log the tables to be monitored
 	log.Info("The following tables will be monitored")
 	for _, table := range tablesToMonitor {
-		log.Info("Monitoring table", "name", table.Name)
+		log.Info("\t" + table.Name)
 	}
 
 	// Create table monitoring orchestrator for those tables
@@ -180,10 +180,24 @@ func (i *Ingester) getTablesToMonitor() []config.ResolvedTableConfig {
 
 	// Filter out the locked tables from the list
 	for _, table := range i.config.Ingester.Tables {
+
+		// If the table is locked, skip it
 		lockName := lockerFactory.GetLockName(table.Name)
 		if lockedTableMap[lockName] {
 			log.Info("Table is locked and being monitored by another process", "table", table.Name)
 			continue
+		}
+
+		// if CDC is not enabled for the table, skip it
+		enabled, err := i.isCDCEnabledForTable(table.Name)
+		if err != nil {
+			log.Error("Failed to check CDC status", "error", err)
+			continue
+		} else if !enabled {
+			log.Warn("CDC is not enabled on table, skipping", "table", table.Name)
+			continue
+		} else {
+			log.Info("CDC is enabled on table", "table", table.Name)
 		}
 
 		tablesToMonitor = append(tablesToMonitor, table)
@@ -226,4 +240,20 @@ func (i *Ingester) handleShutdown(cancel context.CancelFunc, tableService *orche
 	} else {
 		log.Info("No active TableMonitoringOrchestrator; skipping lock release.")
 	}
+}
+
+func (i *Ingester) isCDCEnabledForTable(tableName string) (bool, error) {
+	query := `
+		SELECT COUNT(*) 
+		FROM cdc.change_tables 
+		WHERE source_object_id = OBJECT_ID(@p1);
+	`
+
+	var count int
+	err := i.dbConn.QueryRow(query, tableName).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to query CDC status for table %s: %w", tableName, err)
+	}
+
+	return count > 0, nil
 }
