@@ -7,8 +7,8 @@ ingester {
 
     # Default polling intervals for tables
     poll_interval_defaults {
-        poll_interval = "1s"
-        max_poll_interval = "5s"
+        poll_interval = "10s"
+        max_poll_interval = "300s"
     }
 
     queue {
@@ -28,7 +28,8 @@ ingester {
     tables = [
         "Persons",
         "Cars",
-        "Hello"
+        "Hello",
+        "Doesnotexist"
     ]
 
     # Table-specific overrides
