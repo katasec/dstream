@@ -112,6 +112,14 @@ func (r *Router) routeMessages(ctx context.Context) error {
 			// Receive message from the queue
 			msg, err := receiver.ReceiveMessages(ctx, 1, nil)
 			if err != nil {
+
+				// Check if the error is due to context cancellation
+				if ctx.Err() == context.Canceled {
+					log.Info("Context canceled during message reception, exiting gracefully")
+					return nil
+				}
+
+				// Log the error and continue
 				log.Error("Failed to receive message", "error", err)
 				continue
 			}
