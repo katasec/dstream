@@ -11,8 +11,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	_ "github.com/denisenkom/go-mssqldb" // SQL Server driver
-	"github.com/katasec/dstream/internal/logging"
 	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
+	"github.com/katasec/dstream/pkg/logging"
 )
 
 // CheckConfig validates the configuration based on the output type and lock type requirements

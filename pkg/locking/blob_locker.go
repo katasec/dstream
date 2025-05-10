@@ -10,7 +10,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/lease"
 
-	"github.com/katasec/dstream/internal/logging"
+	"github.com/katasec/dstream/pkg/logging"
 )
 
 type BlobLocker struct {
@@ -201,9 +201,9 @@ func (bl *BlobLocker) GetLockedTables(tableNames []string) ([]string, error) {
 
 		if *leaseStatus == "locked" && *leaseState == "leased" {
 			logger := logging.GetLogger()
-			logger.Printf("Table %s is locked (last modified: %v, %.2f minutes ago)", 
-				tableName, 
-				lastModified.Format(time.RFC3339), 
+			logger.Printf("Table %s is locked (last modified: %v, %.2f minutes ago)",
+				tableName,
+				lastModified.Format(time.RFC3339),
 				lockAge.Minutes())
 
 			// Only consider the table locked if the lock is less than 2 minutes old

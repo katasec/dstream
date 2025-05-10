@@ -10,13 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/katasec/dstream/internal/logging"
 	"github.com/katasec/dstream/internal/monitoring"
+	"github.com/katasec/dstream/pkg/logging"
 
-	"github.com/katasec/dstream/internal/cdc/locking"
-	"github.com/katasec/dstream/internal/cdc/orchestrator"
-	"github.com/katasec/dstream/internal/config"
-	"github.com/katasec/dstream/internal/db"
+	"github.com/katasec/dstream/pkg/config"
+	"github.com/katasec/dstream/pkg/db"
+	"github.com/katasec/dstream/pkg/locking"
+	"github.com/katasec/dstream/pkg/orchestrator"
 )
 
 var log = logging.GetLogger()

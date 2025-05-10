@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/katasec/dstream/internal/cdc/locking"
-	"github.com/katasec/dstream/internal/cdc/sqlserver"
-	"github.com/katasec/dstream/internal/config"
-	"github.com/katasec/dstream/internal/logging"
+	"github.com/katasec/dstream/pkg/config"
+	"github.com/katasec/dstream/pkg/locking"
+	"github.com/katasec/dstream/pkg/logging"
+	"github.com/katasec/dstream/pkg/sqlservercdc"
 )
 
 var log = logging.GetLogger()
@@ -105,7 +105,7 @@ func (t *TableMonitoringOrchestrator) Start(ctx context.Context) error {
 		}
 
 		// Create a new SQLServerTableMonitor for this table
-		monitor := sqlserver.NewSQLServerTableMonitor(
+		monitor := sqlservercdc.NewSQLServerTableMonitor(
 			t.db,
 			tableConfig.Name,
 			pollInterval,
@@ -157,7 +157,7 @@ func (t *TableMonitoringOrchestrator) ReleaseAllLocks(ctx context.Context) {
 //
 // It serves as a bridge between the orchestrator and the individual table monitors,
 // isolating each monitor in its own execution context.
-func (t *TableMonitoringOrchestrator) monitorTable(wg *sync.WaitGroup, monitor *sqlserver.SqlServerTableMonitor, tableConfig config.ResolvedTableConfig) {
+func (t *TableMonitoringOrchestrator) monitorTable(wg *sync.WaitGroup, monitor *sqlservercdc.SqlServerTableMonitor, tableConfig config.ResolvedTableConfig) {
 	defer wg.Done() // Mark goroutine as done when it completes
 
 	// Create a new context for this table monitor

@@ -1,11 +1,11 @@
-package sqlserver
+package sqlservercdc
 
 import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
 
-	"github.com/katasec/dstream/internal/logging"
+	"github.com/katasec/dstream/pkg/logging"
 )
 
 var log = logging.GetLogger()

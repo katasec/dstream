@@ -1,4 +1,4 @@
-package sqlserver
+package sqlservercdc
 
 import (
 	"context"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	_ "github.com/denisenkom/go-mssqldb"
-	"github.com/katasec/dstream/internal/logging"
+	"github.com/katasec/dstream/pkg/logging"
 )
 
 func Connect(connectionString string) (*sql.DB, error) {

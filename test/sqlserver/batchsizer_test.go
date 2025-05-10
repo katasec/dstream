@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/katasec/dstream/internal/cdc/sqlserver"
+	"github.com/katasec/dstream/pkg/sqlservercdc"
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,12 +36,12 @@ func TestBatchSizer(t *testing.T) {
 	}{
 		{
 			name:          "Standard SKU Batch Size",
-			sku:           sqlserver.StandardSKULimit,
+			sku:           sqlservercdc.StandardSKULimit,
 			expectedBatch: 100,
 		},
 		{
 			name:          "Premium SKU Batch Size",
-			sku:           sqlserver.PremiumSKULimit,
+			sku:           sqlservercdc.PremiumSKULimit,
 			expectedBatch: 250,
 		},
 	}
@@ -49,7 +49,7 @@ func TestBatchSizer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create BatchSizer for this SKU
-			sizer := sqlserver.NewBatchSizer(db, "TestBatchSizeTable", tt.sku)
+			sizer := sqlservercdc.NewBatchSizer(db, "TestBatchSizeTable", tt.sku)
 
 			// Insert some test records to ensure CDC is working
 			insertTestRecords(t, db, 10, 1024) // Just need a few records
