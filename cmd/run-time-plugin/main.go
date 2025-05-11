@@ -21,7 +21,7 @@ func main() {
 		Plugins: map[string]plugin.Plugin{
 			"ingester": &serve.IngesterPlugin{},
 		},
-		Cmd:              exec.Command("../../dstream-ingester-time"), // path to built binary
+		Cmd:              exec.Command("./dstream-ingester-time"), // path to built binary
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 	})
 
