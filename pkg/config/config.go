@@ -1,14 +1,9 @@
 package config
 
 import (
-	"bytes"
-	"fmt"
 	"os"
-	"path/filepath"
-	"text/template"
 	"time"
 
-	"github.com/Masterminds/sprig"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -105,7 +100,7 @@ type OutputConfig struct {
 	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
 }
 
-// SourceConfig represents the configuration for the source of the data
+// SourceConfig represents the configuration for the source
 type SourceConfig struct {
 	Type             string `hcl:"type,attr"`              // e.g., "azure_service_bus"
 	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
@@ -135,7 +130,7 @@ func LoadConfig(filePath string) (*Config, error) {
 	var config Config
 
 	// Generate HCL config post text templating
-	hcl, err := generateHCL(filePath)
+	hcl, err := GenerateHCL(filePath)
 	if err != nil {
 		log.Error("Error generating HCL", "error", err)
 		os.Exit(1)
@@ -190,27 +185,6 @@ func LoadConfig(filePath string) (*Config, error) {
 	config.Ingester.Tables = resolvedTables
 
 	return &config, nil
-}
-
-// generateHCL Generates the HCL config after processing the text templating
-func generateHCL(filePath string) (hcl string, err error) {
-	// Get the Sprig function map
-	fmap := sprig.TxtFuncMap()
-
-	// Ensure the Sprig functions are loaded for processing templates
-	baseName := filepath.Base(filePath)
-	t := template.Must(template.New(baseName).
-		Funcs(fmap).
-		ParseFiles(filePath))
-
-	buf := &bytes.Buffer{}
-	err = t.ExecuteTemplate(buf, baseName, nil)
-	if err != nil {
-		fmt.Printf("Error during template execution: %s", err)
-		return "", err
-	}
-
-	return buf.String(), nil
 }
 
 // processHCL returns a config object based on the provided config file
