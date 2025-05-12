@@ -16,8 +16,24 @@ import (
 
 // Config holds the entire configuration as represented in the HCL file
 type Config struct {
-	Ingester Ingester `hcl:"ingester,block"`
-	Router   Router   `hcl:"router,block"`
+	Ingesters []LabeledIngester `hcl:"ingester,block"`
+	Ingester  Ingester          // temporary active one
+	Router    Router            `hcl:"router,block"`
+}
+
+type LabeledIngester struct {
+	Name                 string              `hcl:",label"`
+	DBType               string              `hcl:"db_type,optional"` // for backward compatibility
+	DBConnectionString   string              `hcl:"db_connection_string,attr"`
+	PollIntervalDefaults PollInterval        `hcl:"poll_interval_defaults,block"`
+	Queue                QueueConfig         `hcl:"queue,block"`
+	Locks                LockConfig          `hcl:"locks,block"`
+	RawTables            []string            `hcl:"tables,attr"`
+	TablesOverrides      TableOverridesBlock `hcl:"tables_overrides,block"`
+	PluginPath           string              `hcl:"plugin_path,optional"`
+
+	// Computed field
+	ResolvedTables []ResolvedTableConfig
 }
 
 type Ingester struct {
@@ -127,6 +143,22 @@ func LoadConfig(filePath string) (*Config, error) {
 
 	// Read config from generated HCL
 	config = processHCL2(hcl, filePath)
+
+	// Get the sqlserver ingester
+	for _, ing := range config.Ingesters {
+		if ing.Name == "sqlserver" {
+			config.Ingester = Ingester{
+				DBConnectionString:   ing.DBConnectionString,
+				PollIntervalDefaults: ing.PollIntervalDefaults,
+				Queue:                ing.Queue,
+				Locks:                ing.Locks,
+				RawTables:            ing.RawTables,
+				TablesOverrides:      ing.TablesOverrides,
+				Tables:               nil, // will be filled next
+			}
+			break
+		}
+	}
 
 	// Merge defaults and overrides for tables
 	resolvedTables := []ResolvedTableConfig{}

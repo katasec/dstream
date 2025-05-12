@@ -1,6 +1,4 @@
-ingester {
-    # Database provider type
-    db_type = "sqlserver"
+ingester "sqlserver" {
 
     # Connection string for the database
     db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
