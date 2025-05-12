@@ -105,7 +105,7 @@ type OutputConfig struct {
 	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
 }
 
-// OutputConfig represents the configuration for output type and connection string
+// SourceConfig represents the configuration for the source of the data
 type SourceConfig struct {
 	Type             string `hcl:"type,attr"`              // e.g., "azure_service_bus"
 	ConnectionString string `hcl:"connection_string,attr"` // Connection string for EventHub or ServiceBus if needed
