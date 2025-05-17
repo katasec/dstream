@@ -15,7 +15,7 @@ var runCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		taskName := args[0]
-		hclPath := "dstream2.hcl"
+		hclPath := "dstream.hcl"
 
 		if _, err := os.Stat(hclPath); os.IsNotExist(err) {
 			log.Error("Config file not found: %s", hclPath)

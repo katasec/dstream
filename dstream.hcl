@@ -53,3 +53,12 @@ task "router" "route_to_publisher" {
     }
   }
 }
+
+task "ingester" "ingest_time" {
+  type        = "ingester"
+  plugin_path = "./out/dstream-ingester-time"
+
+  config {
+    interval = "5s" # optional, default can be hardcoded in plugin
+  }
+}
