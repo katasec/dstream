@@ -6,9 +6,9 @@ import (
 
 // Represents a single `task` block
 type TaskBlock struct {
-	Type       string   `hcl:"type,label"`    // e.g. "ingester"
-	Name       string   `hcl:"name,label"`    // e.g. "ingest_mssql"
-	PluginPath string   `hcl:"plugin_path"`   // path to the plugin binary
+	Type       string   `hcl:"type,label"` // e.g. "ingester"
+	Name       string   `hcl:"name,label"` // e.g. "ingest_mssql"
+	PluginPath string   `hcl:"plugin_path,optional"`
 	Config     hcl.Body `hcl:"config,remain"` // plugin-specific config block
 }
 

@@ -73,7 +73,7 @@ func ExecuteTask(task *config.TaskBlock) error {
 		return fmt.Errorf("failed to extract config block: %w", err)
 	}
 
-	fmt.Printf("[executor] Launching plugin: %s\n", task.PluginPath)
+	//fmt.Printf("[executor] Launching plugin: %s\n", task.PluginPath)
 	fmt.Printf("[executor] Task: %s | Type: %s\n", task.Name, task.Type)
 	fmt.Printf("[executor] Raw config:\n%s\n", string(configBytes))
 

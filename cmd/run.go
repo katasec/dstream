@@ -22,19 +22,20 @@ var runCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		taskFile, err := config.LoadTaskFile(hclPath)
+		root, err := config.LoadRootFile(hclPath)
 		if err != nil {
-			log.Error("Failed to load tasks from %s: %v", hclPath, err)
+			log.Error("Failed to load root config from %s: %v", hclPath, err)
 			os.Exit(1)
 		}
 
 		var task *config.TaskBlock
-		for _, t := range taskFile.Tasks {
+		for _, t := range root.Tasks {
 			if t.Name == taskName {
-				task = t
+				task = &t // ✅ fix: take address of struct
 				break
 			}
 		}
+
 		if task == nil {
 			log.Error("Task %q not found in %s", taskName, hclPath)
 			os.Exit(1)
