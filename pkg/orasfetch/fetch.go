@@ -25,7 +25,7 @@ func PullBinary(ref string) (string, error) {
 	pluginPath := filepath.Join(cachePath, binaryName)
 
 	if _, err := os.Stat(pluginPath); err == nil {
-		fmt.Println("[orasfetch] Using cached plugin at", pluginPath)
+		log.Info("Using cached plugin", "path", pluginPath)
 		return pluginPath, nil
 	}
 

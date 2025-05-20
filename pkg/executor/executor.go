@@ -24,9 +24,11 @@ func ExecuteTask(task *config.TaskBlock) error {
 	if err != nil {
 		return fmt.Errorf("failed to extract config block: %w", err)
 	}
+	if configBytes != nil {
+		log.Info("Extracted config block")
+	}
 
-	fmt.Printf("[executor] Task: %s | Type: %s\n", task.Name, task.Type)
-	fmt.Printf("[executor] Raw config:\n%s\n", string(configBytes))
+	log.Info("Executor:", "Name:", task.Name, "Type:", task.Type)
 
 	// Resolve plugin path
 	var pluginPath string
@@ -41,7 +43,7 @@ func ExecuteTask(task *config.TaskBlock) error {
 		return fmt.Errorf("task must have either plugin_path or plugin_ref")
 	}
 
-	fmt.Printf("[executor] Launching plugin: %s\n", pluginPath)
+	log.Info("Executor:", "Launching plugin:", pluginPath)
 
 	// Start the plugin client
 	client := hplugin.NewClient(&hplugin.ClientConfig{
@@ -58,6 +60,7 @@ func ExecuteTask(task *config.TaskBlock) error {
 
 	raw, err := rpcClient.Dispense("ingester")
 	if err != nil {
+		log.Error("failed to dispense plugin:", "error", err)
 		return fmt.Errorf("failed to dispense plugin: %w", err)
 	}
 
@@ -67,7 +70,7 @@ func ExecuteTask(task *config.TaskBlock) error {
 	defer cancel()
 
 	emit := func(e plugins.Event) error {
-		fmt.Printf("[plugin emit] %+v\n", e)
+		log.Info("Plugin Emit", "Data", e)
 		return nil
 	}
 
