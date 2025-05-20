@@ -23,13 +23,13 @@ dstream {
   plugin_registry = "ghcr.io/katasec"
 
   required_plugins {
-    name    = "ingester-mssql"
-    version = "v1.0.0"
+    name    = "ingester-time"
+    version = "0.0.1"
   }
 
   required_plugins {
     name    = "router"
-    version = "v1.0.0"
+    version = "0.0.1"
   }
 }
 
