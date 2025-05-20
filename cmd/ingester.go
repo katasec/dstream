@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/katasec/dstream/internal/ingester"
+	mssql "github.com/katasec/dstream-ingester-mssql/mssql"
+	"github.com/katasec/dstream/pkg/plugins"
 	"github.com/spf13/cobra"
 )
 
@@ -12,11 +14,18 @@ var ingesterCmd = &cobra.Command{
 	Short: "Start the DStream ingester",
 	Long:  `Start the DStream ingester which monitors SQL Server tables for changes using Change Data Capture (CDC) and sends them to the ingest queue.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dStream, err := ingester.NewIngester()
+		ing := mssql.New()
+		ctx := context.Background()
+
+		err := ing.Start(ctx, func(e plugins.Event) error {
+			return nil
+		})
+
 		if err != nil {
-			return fmt.Errorf("failed to create ingester: %w", err)
+			return fmt.Errorf("failed to start ingester: %w", err)
 		}
-		return dStream.Start()
+
+		return nil
 	},
 }
 

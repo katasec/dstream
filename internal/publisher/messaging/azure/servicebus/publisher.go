@@ -8,8 +8,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
-	"github.com/katasec/dstream/internal/logging"
 	publishertypes "github.com/katasec/dstream/internal/types/publisher"
+	"github.com/katasec/dstream/pkg/logging"
 )
 
 var log = logging.GetLogger()

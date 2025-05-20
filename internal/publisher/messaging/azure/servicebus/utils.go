@@ -3,9 +3,7 @@ package servicebus
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
@@ -44,31 +42,6 @@ func extractDatabaseName(connectionString string) (string, error) {
 	dbName = strings.ToLower(dbName)
 
 	return dbName, nil
-}
-
-// Deprecated: Use utils.ExtractServerNameFromConnectionString instead
-// This function is kept for backward compatibility
-func extractServerName(connectionString string) (string, error) {
-	return utils.ExtractServerNameFromConnectionString(connectionString)
-}
-
-// isIPAddress checks if a string is an IP address or part of one (like '127')
-// Deprecated: This function is no longer used directly
-func isIPAddress(host string) bool {
-	// Check if it's a full IP address
-	if ip := net.ParseIP(host); ip != nil {
-		return true
-	}
-
-	// Check if it's a partial IP (e.g. '127' from '127.0.0.1')
-	if _, err := strconv.Atoi(host); err == nil {
-		// It's a number, check if it's in valid IP octet range (0-255)
-		if num, _ := strconv.Atoi(host); num >= 0 && num <= 255 {
-			return true
-		}
-	}
-
-	return false
 }
 
 // CreateTopicIfNotExists checks if a topic exists and creates it if it doesn't

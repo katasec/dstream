@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package dstream;
+
+option go_package = "github.com/katasec/dstream/pkg/proto;proto";
+
+// This is the plugin interface every Ingester plugin must implement.
+service IngesterPlugin {
+  // Starts the plugin and begins streaming events back to the CLI
+  rpc Start(StreamRequest) returns (stream Event);
+}
+
+// Config or startup options (e.g., JSON blob)
+message StreamRequest {
+  string config_json = 1;
+}
+
+// A single event emitted by the plugin (payload as JSON for now)
+message Event {
+  string json_payload = 1;
+}
