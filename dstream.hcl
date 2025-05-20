@@ -24,7 +24,7 @@ dstream {
 
   required_plugins {
     name    = "ingester-time"
-    version = "0.0.1"
+    version = "v0.0.1"
   }
 
   required_plugins {
@@ -42,10 +42,10 @@ task "ingester-mssql" "mssql_orders" {
 }
 
 task "ingester" "ingest_time" {
-  type        = "ingester"
-  plugin_path = "./out/dstream-ingester-time"
+  type       = "ingester"
+  plugin_ref = "ghcr.io/katasec/dstream-ingester-time:v0.0.1"
 
   config {
-    interval = "5s" # optional, default can be hardcoded in plugin
+    interval = "5s"
   }
 }
