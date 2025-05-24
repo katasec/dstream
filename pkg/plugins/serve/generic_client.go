@@ -19,9 +19,9 @@ func NewGRPCClient(cc *grpc.ClientConn) *GRPCClient {
 }
 
 // Start calls the remote plugin's Start method over gRPC
-func (g *GRPCClient) Start(ctx context.Context, rawConfig []byte) error {
+func (g *GRPCClient) Start(ctx context.Context, cfg map[string]string) error {
 	_, err := g.client.Start(ctx, &pb.StartRequest{
-		Config: rawConfig,
+		Config: cfg,
 	})
 	return err
 }

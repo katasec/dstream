@@ -6,15 +6,17 @@ import (
 	"os/exec"
 
 	hplugin "github.com/hashicorp/go-plugin"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/gohcl"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/orasfetch"
-	"github.com/katasec/dstream/pkg/plugins"
 	"github.com/katasec/dstream/pkg/plugins/serve"
 )
 
-// ExecuteTask starts the plugin defined by the given TaskBlock.
+// ExecuteTask starts a gRPC plugin using the task config block
 func ExecuteTask(task *config.TaskBlock) error {
-	// Load the full HCL file so we can extract the raw config block for this task
+	// Load the full rendered HCL to extract this task's config block
 	rawHCL, err := config.GenerateHCL("dstream.hcl")
 	if err != nil {
 		return fmt.Errorf("failed to read HCL file: %w", err)
@@ -47,8 +49,10 @@ func ExecuteTask(task *config.TaskBlock) error {
 
 	// Start the plugin client
 	client := hplugin.NewClient(&hplugin.ClientConfig{
-		HandshakeConfig:  serve.Handshake,
-		Plugins:          map[string]hplugin.Plugin{"ingester": &serve.IngesterPlugin{}},
+		HandshakeConfig: serve.Handshake,
+		Plugins: map[string]hplugin.Plugin{
+			"default": &serve.GenericPlugin{},
+		},
 		Cmd:              exec.Command(pluginPath),
 		AllowedProtocols: []hplugin.Protocol{hplugin.ProtocolGRPC},
 	})
@@ -58,23 +62,34 @@ func ExecuteTask(task *config.TaskBlock) error {
 		return fmt.Errorf("failed to create RPC client: %w", err)
 	}
 
-	raw, err := rpcClient.Dispense("ingester")
+	raw, err := rpcClient.Dispense("default")
 	if err != nil {
 		log.Error("failed to dispense plugin:", "error", err)
 		return fmt.Errorf("failed to dispense plugin: %w", err)
 	}
 
-	ingester := raw.(plugins.Ingester)
+	pluginImpl, ok := raw.(serve.Plugin)
+	if !ok {
+		return fmt.Errorf("plugin does not implement serve.Plugin interface")
+	}
 
+	// Decode config HCL into map[string]string
+	hclFile, diags := hclsyntax.ParseConfig(configBytes, "plugin_config.hcl", hcl.InitialPos)
+	if diags.HasErrors() {
+		return fmt.Errorf("failed to parse config block: %w", diags)
+	}
+
+	configMap := make(map[string]string)
+	diags = gohcl.DecodeBody(hclFile.Body, nil, &configMap)
+	if diags.HasErrors() {
+		return fmt.Errorf("failed to decode config block: %w", diags)
+	}
+
+	// Execute the plugin
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	emit := func(e plugins.Event) error {
-		log.Info("Plugin Emit", "Data", e)
-		return nil
-	}
-
-	if err := ingester.Start(ctx, emit); err != nil {
+	if err := pluginImpl.Start(ctx, configMap); err != nil {
 		return fmt.Errorf("plugin execution failed: %w", err)
 	}
 

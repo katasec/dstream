@@ -21,10 +21,9 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// StartRequest carries the raw config block as bytes (JSON or HCL encoded)
 type StartRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Config        []byte                 `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	Config        map[string]string      `protobuf:"bytes,1,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -59,14 +58,13 @@ func (*StartRequest) Descriptor() ([]byte, []int) {
 	return file_proto_plugin_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *StartRequest) GetConfig() []byte {
+func (x *StartRequest) GetConfig() map[string]string {
 	if x != nil {
 		return x.Config
 	}
 	return nil
 }
 
-// Simple response type (can be expanded later)
 type StartResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
@@ -115,9 +113,12 @@ var File_proto_plugin_proto protoreflect.FileDescriptor
 
 const file_proto_plugin_proto_rawDesc = "" +
 	"\n" +
-	"\x12proto/plugin.proto\x12\x06plugin\"&\n" +
-	"\fStartRequest\x12\x16\n" +
-	"\x06config\x18\x01 \x01(\fR\x06config\")\n" +
+	"\x12proto/plugin.proto\x12\x06plugin\"\x83\x01\n" +
+	"\fStartRequest\x128\n" +
+	"\x06config\x18\x01 \x03(\v2 .plugin.StartRequest.ConfigEntryR\x06config\x1a9\n" +
+	"\vConfigEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\")\n" +
 	"\rStartResponse\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage2E\n" +
 	"\rDStreamPlugin\x124\n" +
@@ -135,19 +136,21 @@ func file_proto_plugin_proto_rawDescGZIP() []byte {
 	return file_proto_plugin_proto_rawDescData
 }
 
-var file_proto_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_proto_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_proto_plugin_proto_goTypes = []any{
 	(*StartRequest)(nil),  // 0: plugin.StartRequest
 	(*StartResponse)(nil), // 1: plugin.StartResponse
+	nil,                   // 2: plugin.StartRequest.ConfigEntry
 }
 var file_proto_plugin_proto_depIdxs = []int32{
-	0, // 0: plugin.DStreamPlugin.Start:input_type -> plugin.StartRequest
-	1, // 1: plugin.DStreamPlugin.Start:output_type -> plugin.StartResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2, // 0: plugin.StartRequest.config:type_name -> plugin.StartRequest.ConfigEntry
+	0, // 1: plugin.DStreamPlugin.Start:input_type -> plugin.StartRequest
+	1, // 2: plugin.DStreamPlugin.Start:output_type -> plugin.StartResponse
+	2, // [2:3] is the sub-list for method output_type
+	1, // [1:2] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_proto_plugin_proto_init() }
@@ -161,7 +164,7 @@ func file_proto_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_plugin_proto_rawDesc), len(file_proto_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -25,8 +25,6 @@ const (
 // DStreamPluginClient is the client API for DStreamPlugin service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// The unified plugin interface for all plugin types (ingester, router, etc.)
 type DStreamPluginClient interface {
 	Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*StartResponse, error)
 }
@@ -52,8 +50,6 @@ func (c *dStreamPluginClient) Start(ctx context.Context, in *StartRequest, opts 
 // DStreamPluginServer is the server API for DStreamPlugin service.
 // All implementations must embed UnimplementedDStreamPluginServer
 // for forward compatibility.
-//
-// The unified plugin interface for all plugin types (ingester, router, etc.)
 type DStreamPluginServer interface {
 	Start(context.Context, *StartRequest) (*StartResponse, error)
 	mustEmbedUnimplementedDStreamPluginServer()

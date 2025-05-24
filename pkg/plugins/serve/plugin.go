@@ -10,7 +10,7 @@ import (
 
 // Plugin is the standard interface all DStream plugins must implement.
 type Plugin interface {
-	Start(ctx context.Context, rawConfig []byte) error
+	Start(ctx context.Context, config map[string]string) error
 }
 
 // GenericPlugin implements the go-plugin plumbing to wire gRPC server + client
