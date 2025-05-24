@@ -32,12 +32,12 @@ dstream {
     version = "0.0.1"
   }
 }
-
-task "ingester-mssql" "mssql_orders" {
-  tables = ["Orders", "Customers"]
+task "ingester" "ingester-mssql" {
+  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.1"
 
   config {
     db_connection_string = "{{ env "MSSQL_CONN" }}"
+    tables = ["Orders", "Customers"]
   }
 }
 

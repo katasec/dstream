@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package plugin;
+
+option go_package = "github.com/katasec/dstream/proto;proto";
+
+// The unified plugin interface for all plugin types (ingester, router, etc.)
+service DStreamPlugin {
+  rpc Start (StartRequest) returns (StartResponse);
+}
+
+// StartRequest carries the raw config block as bytes (JSON or HCL encoded)
+message StartRequest {
+  bytes config = 1;
+}
+
+// Simple response type (can be expanded later)
+message StartResponse {
+  string message = 1;
+}
