@@ -49,18 +49,27 @@ func NewRootHCL(fileName ...string) *RootHCL {
 	return config
 }
 
-func LoadRootHCL(filePath string) (*RootHCL, error) {
+func LoadRootHCL(fileName ...string) (*RootHCL, error) {
+
+	// Get optional file name, default to "dstream.hcl"
+	var configFile string
+	if len(fileName) > 0 {
+		configFile = fileName[0]
+	} else {
+		configFile = "dstream.hcl"
+	}
+
 	var config RootHCL
 
 	// Render HCL config post text templating
-	hcl, err := RenderHCLTemplate(filePath)
+	hcl, err := RenderHCLTemplate(configFile)
 	if err != nil {
 		log.Error("Error generating HCL", "error", err)
 		os.Exit(1)
 	}
 
 	// Decode HCL to RootHCL struct
-	config = DecodeHCL[RootHCL](hcl, filePath)
+	config = DecodeHCL[RootHCL](hcl, configFile)
 
 	return &config, nil
 }

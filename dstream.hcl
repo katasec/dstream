@@ -34,7 +34,7 @@ dstream {
 }
 
 
-task "ingester" "ingester-mssql" {
+task "ingester-mssql" {
   plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.7"
 
   config {
@@ -43,7 +43,7 @@ task "ingester" "ingester-mssql" {
   }
 }
 
-task "ingester" "ingest-time" {
+task "ingest-time" {
   type       = "ingester"
   plugin_ref = "ghcr.io/katasec/dstream-ingester-time:v0.0.1"
 
