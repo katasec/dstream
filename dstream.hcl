@@ -38,7 +38,7 @@ task "ingester-mssql" {
   plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.7"
 
   config {
-    db_connection_string = "Server=localhost;User Id=sa;Password=whatever"
+    db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
     tables = ["Orders", "Customers"]
   }
 }
