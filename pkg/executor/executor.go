@@ -16,8 +16,10 @@ import (
 
 // ExecuteTask starts a gRPC plugin using the task config block
 func ExecuteTask(task *config.TaskBlock) error {
+	fmt.Println("*********** Executing task:", task.Name, "***********")
+
 	// Load the full rendered HCL to extract this task's config block
-	rawHCL, err := config.GenerateHCL("dstream.hcl")
+	rawHCL, err := config.RenderHCLTemplate("dstream.hcl")
 	if err != nil {
 		return fmt.Errorf("failed to read HCL file: %w", err)
 	}
@@ -66,6 +68,8 @@ func ExecuteTask(task *config.TaskBlock) error {
 	if err != nil {
 		log.Error("failed to dispense plugin:", "error", err)
 		return fmt.Errorf("failed to dispense plugin: %w", err)
+	} else {
+		log.Info("Plugin dispensed successfully")
 	}
 
 	pluginImpl, ok := raw.(serve.Plugin)
@@ -82,6 +86,7 @@ func ExecuteTask(task *config.TaskBlock) error {
 	configMap := make(map[string]string)
 	diags = gohcl.DecodeBody(hclFile.Body, nil, &configMap)
 	if diags.HasErrors() {
+		log.Error("Cannot decode config block, using empty map", "config", configMap)
 		return fmt.Errorf("failed to decode config block: %w", diags)
 	}
 

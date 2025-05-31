@@ -130,7 +130,7 @@ func LoadConfig(filePath string) (*Config, error) {
 	var config Config
 
 	// Generate HCL config post text templating
-	hcl, err := GenerateHCL(filePath)
+	hcl, err := RenderHCLTemplate(filePath)
 	if err != nil {
 		log.Error("Error generating HCL", "error", err)
 		os.Exit(1)

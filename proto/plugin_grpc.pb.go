@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -114,6 +115,146 @@ var DStreamPlugin_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Start",
 			Handler:    _DStreamPlugin_Start_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/plugin.proto",
+}
+
+const (
+	Plugin_Start_FullMethodName     = "/plugin.Plugin/Start"
+	Plugin_GetSchema_FullMethodName = "/plugin.Plugin/GetSchema"
+)
+
+// PluginClient is the client API for Plugin service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type PluginClient interface {
+	Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetSchema(ctx context.Context, in *GetSchemaRequest, opts ...grpc.CallOption) (*GetSchemaResponse, error)
+}
+
+type pluginClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewPluginClient(cc grpc.ClientConnInterface) PluginClient {
+	return &pluginClient{cc}
+}
+
+func (c *pluginClient) Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, Plugin_Start_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pluginClient) GetSchema(ctx context.Context, in *GetSchemaRequest, opts ...grpc.CallOption) (*GetSchemaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSchemaResponse)
+	err := c.cc.Invoke(ctx, Plugin_GetSchema_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PluginServer is the server API for Plugin service.
+// All implementations must embed UnimplementedPluginServer
+// for forward compatibility.
+type PluginServer interface {
+	Start(context.Context, *StartRequest) (*emptypb.Empty, error)
+	GetSchema(context.Context, *GetSchemaRequest) (*GetSchemaResponse, error)
+	mustEmbedUnimplementedPluginServer()
+}
+
+// UnimplementedPluginServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedPluginServer struct{}
+
+func (UnimplementedPluginServer) Start(context.Context, *StartRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Start not implemented")
+}
+func (UnimplementedPluginServer) GetSchema(context.Context, *GetSchemaRequest) (*GetSchemaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSchema not implemented")
+}
+func (UnimplementedPluginServer) mustEmbedUnimplementedPluginServer() {}
+func (UnimplementedPluginServer) testEmbeddedByValue()                {}
+
+// UnsafePluginServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to PluginServer will
+// result in compilation errors.
+type UnsafePluginServer interface {
+	mustEmbedUnimplementedPluginServer()
+}
+
+func RegisterPluginServer(s grpc.ServiceRegistrar, srv PluginServer) {
+	// If the following call pancis, it indicates UnimplementedPluginServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Plugin_ServiceDesc, srv)
+}
+
+func _Plugin_Start_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PluginServer).Start(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Plugin_Start_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PluginServer).Start(ctx, req.(*StartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Plugin_GetSchema_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSchemaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PluginServer).GetSchema(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Plugin_GetSchema_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PluginServer).GetSchema(ctx, req.(*GetSchemaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Plugin_ServiceDesc is the grpc.ServiceDesc for Plugin service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Plugin_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "plugin.Plugin",
+	HandlerType: (*PluginServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Start",
+			Handler:    _Plugin_Start_Handler,
+		},
+		{
+			MethodName: "GetSchema",
+			Handler:    _Plugin_GetSchema_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
