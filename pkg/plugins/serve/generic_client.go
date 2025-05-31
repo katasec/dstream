@@ -9,12 +9,12 @@ import (
 
 // GRPCClient implements the Plugin interface by calling the remote gRPC plugin
 type GRPCClient struct {
-	client pb.DStreamPluginClient
+	client pb.PluginClient
 }
 
 func NewGRPCClient(cc *grpc.ClientConn) *GRPCClient {
 	return &GRPCClient{
-		client: pb.NewDStreamPluginClient(cc),
+		client: pb.NewPluginClient(cc),
 	}
 }
 
@@ -24,4 +24,13 @@ func (g *GRPCClient) Start(ctx context.Context, cfg map[string]string) error {
 		Config: cfg,
 	})
 	return err
+}
+
+// GetSchema calls the remote plugin's GetSchema method over gRPC
+func (g *GRPCClient) GetSchema(ctx context.Context) ([]*pb.FieldSchema, error) {
+	resp, err := g.client.GetSchema(ctx, &pb.GetSchemaRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Fields, nil
 }
