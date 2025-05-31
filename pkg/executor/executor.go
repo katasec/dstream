@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 
-	hplugin "github.com/hashicorp/go-plugin"
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/gohcl"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hashicorp/go-plugin"
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/orasfetch"
 	"github.com/katasec/dstream/pkg/plugins/serve"
@@ -16,9 +13,8 @@ import (
 
 // ExecuteTask starts a gRPC plugin using the task config block
 func ExecuteTask(task *config.TaskBlock) error {
-	fmt.Println("*********** Executing task:", task.Name, "***********")
+	log.Info("*********** Executing task:", task.Name, "***********")
 
-	// Load the full rendered HCL to extract this task's config block
 	rawHCL, err := config.RenderHCLTemplate("dstream.hcl")
 	if err != nil {
 		return fmt.Errorf("failed to read HCL file: %w", err)
@@ -26,15 +22,13 @@ func ExecuteTask(task *config.TaskBlock) error {
 
 	configBytes, err := config.ExtractConfigBlock(string(rawHCL), task.Type, task.Name)
 	if err != nil {
-		return fmt.Errorf("failed to extract config block: %w", err)
-	}
-	if configBytes != nil {
-		log.Info("Extracted config block")
+		log.Error("Cannot decode config block, using empty map", "config", configBytes)
+		return fmt.Errorf("failed to decode config block: %w", err)
 	}
 
 	log.Info("Executor:", "Name:", task.Name, "Type:", task.Type)
 
-	// Resolve plugin path
+	// Pull plugin
 	var pluginPath string
 	if task.PluginPath != "" {
 		pluginPath = task.PluginPath
@@ -49,14 +43,14 @@ func ExecuteTask(task *config.TaskBlock) error {
 
 	log.Info("Executor:", "Launching plugin:", pluginPath)
 
-	// Start the plugin client
-	client := hplugin.NewClient(&hplugin.ClientConfig{
+	// Start plugin
+	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: serve.Handshake,
-		Plugins: map[string]hplugin.Plugin{
+		Plugins: map[string]plugin.Plugin{
 			"default": &serve.GenericPlugin{},
 		},
 		Cmd:              exec.Command(pluginPath),
-		AllowedProtocols: []hplugin.Protocol{hplugin.ProtocolGRPC},
+		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 	})
 
 	rpcClient, err := client.Client()
@@ -64,39 +58,31 @@ func ExecuteTask(task *config.TaskBlock) error {
 		return fmt.Errorf("failed to create RPC client: %w", err)
 	}
 
-	raw, err := rpcClient.Dispense("default")
+	rawPlugin, err := rpcClient.Dispense("default")
 	if err != nil {
-		log.Error("failed to dispense plugin:", "error", err)
 		return fmt.Errorf("failed to dispense plugin: %w", err)
-	} else {
-		log.Info("Plugin dispensed successfully")
 	}
 
-	pluginImpl, ok := raw.(serve.Plugin)
-	if !ok {
-		return fmt.Errorf("plugin does not implement serve.Plugin interface")
+	// ✅ Use the serve.Plugin interface, not proto.PluginClient
+	pluginClient := rawPlugin.(serve.Plugin)
+
+	// ✅ GetSchema using serve.Plugin signature
+	schemaFields, err := pluginClient.GetSchema(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get plugin schema: %w", err)
 	}
 
-	// Decode config HCL into map[string]string
-	hclFile, diags := hclsyntax.ParseConfig(configBytes, "plugin_config.hcl", hcl.InitialPos)
-	if diags.HasErrors() {
-		return fmt.Errorf("failed to parse config block: %w", diags)
+	log.Info("Schema returned from plugin:")
+	for _, field := range schemaFields {
+		log.Info(fmt.Sprintf("- %s (%s): %s [required=%v]",
+			field.Name, field.Type, field.Description, field.Required))
 	}
 
-	configMap := make(map[string]string)
-	diags = gohcl.DecodeBody(hclFile.Body, nil, &configMap)
-	if diags.HasErrors() {
-		log.Error("Cannot decode config block, using empty map", "config", configMap)
-		return fmt.Errorf("failed to decode config block: %w", diags)
-	}
-
-	// Execute the plugin
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	if err := pluginImpl.Start(ctx, configMap); err != nil {
-		return fmt.Errorf("plugin execution failed: %w", err)
-	}
+	// Skip Start for now, or implement below
+	// err = pluginClient.Start(context.Background(), configBytes)
+	// if err != nil {
+	//     return fmt.Errorf("plugin start failed: %w", err)
+	// }
 
 	return nil
 }

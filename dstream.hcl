@@ -35,7 +35,7 @@ dstream {
 
 
 task "ingester" "ingester-mssql" {
-  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.4"
+  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.7"
 
   config {
     db_connection_string = "Server=localhost;User Id=sa;Password=whatever"

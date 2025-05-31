@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"encoding/json"
 
 	plugins "github.com/katasec/dstream/pkg/plugins"
@@ -26,7 +27,6 @@ func (s *GRPCServer) Start(req *pb.StreamRequest, stream pb.IngesterPlugin_Start
 
 	// parse config if needed (optional enhancement)
 	config := req.GetConfigJson()
-
 	_ = config // Currently unused – you can forward it if needed
 
 	return s.Impl.Start(ctx, func(e plugins.Event) error {
@@ -37,4 +37,24 @@ func (s *GRPCServer) Start(req *pb.StreamRequest, stream pb.IngesterPlugin_Start
 		}
 		return stream.Send(&pb.Event{JsonPayload: string(data)})
 	})
+}
+
+// GetSchema returns the expected configuration schema for the plugin
+func (s *GRPCServer) GetSchema(ctx context.Context, req *pb.GetSchemaRequest) (*pb.GetSchemaResponse, error) {
+	return &pb.GetSchemaResponse{
+		Fields: []*pb.FieldSchema{
+			{
+				Name:        "db_connection_string",
+				Type:        "string",
+				Required:    true,
+				Description: "Connection string to connect to the MSSQL database",
+			},
+			{
+				Name:        "tables",
+				Type:        "list",
+				Required:    true,
+				Description: "List of tables to monitor for CDC",
+			},
+		},
+	}, nil
 }

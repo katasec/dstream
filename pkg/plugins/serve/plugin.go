@@ -11,6 +11,7 @@ import (
 // Plugin is the standard interface all DStream plugins must implement.
 type Plugin interface {
 	Start(ctx context.Context, config map[string]string) error
+	GetSchema(ctx context.Context) ([]*pb.FieldSchema, error)
 }
 
 // GenericPlugin implements the go-plugin plumbing to wire gRPC server + client
@@ -20,7 +21,7 @@ type GenericPlugin struct {
 }
 
 func (p *GenericPlugin) GRPCServer(broker *hplugin.GRPCBroker, s *grpc.Server) error {
-	pb.RegisterDStreamPluginServer(s, NewGRPCServer(p.Impl))
+	pb.RegisterPluginServer(s, NewGRPCServer(p.Impl))
 	return nil
 }
 
