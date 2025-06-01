@@ -3,32 +3,45 @@ package serve
 import (
 	"context"
 
+	"github.com/hashicorp/go-plugin"
 	pb "github.com/katasec/dstream/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
-// GRPCClient implements the Plugin interface by calling the remote gRPC plugin
-type GRPCClient struct {
-	client pb.PluginClient
+// ───────────────────────────────────────────────────────────────────────────────
+//  HashiCorp go-plugin wrapper (lives in the *CLI* process)
+// ───────────────────────────────────────────────────────────────────────────────
+
+// GenericPlugin satisfies plugin.Plugin so the executor can establish a GRPC
+// connection to the external binary. Net-RPC stubs are supplied by the embedded
+// helper.
+type GenericPlugin struct {
+	plugin.NetRPCUnsupportedPlugin
 }
 
-func NewGRPCClient(cc *grpc.ClientConn) *GRPCClient {
-	return &GRPCClient{
-		client: pb.NewPluginClient(cc),
-	}
+// GRPCClient returns a client-side implementation of plugins.Plugin.
+func (GenericPlugin) GRPCClient(_ context.Context, _ *plugin.GRPCBroker, cc *grpc.ClientConn) (interface{}, error) {
+	return &genericClient{rpc: pb.NewPluginClient(cc)}, nil
 }
 
-// Start calls the remote plugin's Start method over gRPC
-func (g *GRPCClient) Start(ctx context.Context, cfg map[string]string) error {
-	_, err := g.client.Start(ctx, &pb.StartRequest{
-		Config: cfg,
-	})
+// GRPCServer is not used on the CLI side.
+func (GenericPlugin) GRPCServer(*plugin.GRPCBroker, *plugin.GRPCServer) error { return nil }
+
+// ───────────────────────────────────────────────────────────────────────────────
+//  plugins.Plugin façade used by the executor
+// ───────────────────────────────────────────────────────────────────────────────
+
+type genericClient struct{ rpc pb.PluginClient }
+
+func (c *genericClient) Start(ctx context.Context, cfg *structpb.Struct) error {
+	_, err := c.rpc.Start(ctx, cfg)
 	return err
 }
 
-// GetSchema calls the remote plugin's GetSchema method over gRPC
-func (g *GRPCClient) GetSchema(ctx context.Context) ([]*pb.FieldSchema, error) {
-	resp, err := g.client.GetSchema(ctx, &pb.GetSchemaRequest{})
+func (c *genericClient) GetSchema(ctx context.Context) ([]*pb.FieldSchema, error) {
+	resp, err := c.rpc.GetSchema(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, err
 	}

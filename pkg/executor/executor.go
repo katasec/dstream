@@ -9,26 +9,28 @@ import (
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/logging"
 	"github.com/katasec/dstream/pkg/orasfetch"
+	"github.com/katasec/dstream/pkg/plugins" // NEW – universal interface
 	"github.com/katasec/dstream/pkg/plugins/serve"
+	pb "github.com/katasec/dstream/proto" // for schema dump
 )
 
-// ExecuteTask looks up the task in dstream.hcl and runs its plugin via gRPC.
+// ExecuteTask looks up a task in dstream.hcl and runs its plugin via gRPC.
 func ExecuteTask(task *config.TaskBlock) error {
-	log.Info("*********** Executing task:", task.Name, "***********")
 
-	//----------------------------------------------------------------------
-	// Load the root HCL once
-	//----------------------------------------------------------------------
+	if jsonCfg, err := task.DumpConfigAsJSON(); err != nil {
+		log.Error("Failed to dump config as JSON.", "Error:", err.Error())
+		return err
+	} else {
+		log.Info("Raw interpolated config block:", jsonCfg)
+	}
+
+	// ── reload HCL root (env interpolation may change) ──────────────────
 	root, err := config.LoadRootHCL()
 	if err != nil {
-		log.Error("Failed to load configuration", "error", err)
-		return err
+		return fmt.Errorf("load config: %w", err)
 	}
-	log.Debug("Configuration loaded successfully")
 
-	//----------------------------------------------------------------------
-	// Locate the requested task block
-	//----------------------------------------------------------------------
+	// locate the task
 	var t *config.TaskBlock
 	for i := range root.Tasks {
 		if root.Tasks[i].Name == task.Name {
@@ -39,83 +41,70 @@ func ExecuteTask(task *config.TaskBlock) error {
 	if t == nil {
 		return fmt.Errorf("task %q not found in configuration", task.Name)
 	}
-	log.Debug("Found task in configuration", "task", t.Name)
 
-	//----------------------------------------------------------------------
-	// Decode its <config> block into map[string]string
-	//----------------------------------------------------------------------
-	typedConfig, _, err := t.ConfigAsStringMap()
+	// ── decode its `config { … }` block into *structpb.Struct ───────────
+	cfgStruct, err := t.ConfigAsStructPB()
 	if err != nil {
-		return fmt.Errorf("failed to decode config block: %w", err)
+		return fmt.Errorf("decode config: %w", err)
 	}
 
-	//----------------------------------------------------------------------
-	// Resolve the plugin binary (local path or pull via ORAS)
-	//----------------------------------------------------------------------
+	// ── resolve plugin binary (local path or pull via ORAS) ─────────────
 	var pluginPath string
 	switch {
 	case t.PluginPath != "":
 		pluginPath = t.PluginPath
-
 	case t.PluginRef != "":
 		pluginPath, err = orasfetch.PullBinary(t.PluginRef)
 		if err != nil {
-			return fmt.Errorf("failed to pull plugin: %w", err)
+			return fmt.Errorf("pull plugin: %w", err)
 		}
-
 	default:
-		return fmt.Errorf("task %q must specify either plugin_path or plugin_ref", t.Name)
+		return fmt.Errorf("task %q must specify plugin_path or plugin_ref", t.Name)
 	}
 
-	log.Info("Executor:", "Launching plugin:", pluginPath)
-
-	// Setup cmd
+	// ── launch plugin via HashiCorp go-plugin (gRPC only) ───────────────
 	cmd := exec.Command(pluginPath)
-	cmd.Stdout = nil // silence stdout
-	cmd.Stderr = nil // silence stderr
+	cmd.Stdout, cmd.Stderr = nil, nil
 
-	//----------------------------------------------------------------------
-	// Start the plugin via go-plugin
-	//----------------------------------------------------------------------
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: serve.Handshake,
 		Plugins: map[string]plugin.Plugin{
-			"default": &serve.GenericPlugin{},
+			"default": &serve.GenericServerPlugin{},
 		},
 		Cmd:              cmd,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
-		Logger:           logging.NewHcLogAdapter(logging.GetLogger()),
+		Logger:           logging.NewHcLogAdapter(log),
 	})
 
 	rpcClient, err := client.Client()
 	if err != nil {
-		return fmt.Errorf("failed to create RPC client: %w", err)
+		return fmt.Errorf("RPC client setup failed: %w", err)
 	}
-	rawPlugin, err := rpcClient.Dispense("default")
+	raw, err := rpcClient.Dispense("default")
+
 	if err != nil {
-		return fmt.Errorf("failed to dispense plugin: %w", err)
+		return fmt.Errorf("dispense plugin: %w", err)
 	}
-	pluginClient := rawPlugin.(serve.Plugin)
+	pluginClient := raw.(plugins.Plugin) // ← new universal interface
 
-	//----------------------------------------------------------------------
-	// Optional: print schema for debugging
-	//----------------------------------------------------------------------
+	// ── optional: dump schema for debugging ──────────────────────────────
 	if schema, err := pluginClient.GetSchema(context.Background()); err == nil {
-		log.Info("Schema returned from plugin:")
-		for _, f := range schema {
-			log.Info(fmt.Sprintf("- %s (%s): %s [required=%v]",
-				f.Name, f.Type, f.Description, f.Required))
-		}
-	} else {
-		log.Warn("Could not retrieve schema:", err)
+		dumpSchema(schema)
 	}
 
-	//----------------------------------------------------------------------
-	// Kick off the plugin
-	//----------------------------------------------------------------------
-	if err := pluginClient.Start(context.Background(), typedConfig); err != nil {
+	// ── kick off the plugin ──────────────────────────────────────────────
+	log.Debug("Starting plugin with config:", cfgStruct)
+	if err := pluginClient.Start(context.Background(), cfgStruct); err != nil {
 		return fmt.Errorf("plugin start failed: %w", err)
 	}
-
 	return nil
+}
+
+// dumpSchema logs the schema in a readable format.
+func dumpSchema(fields []*pb.FieldSchema) {
+	log.Info("Schema returned from plugin:")
+	for _, f := range fields {
+		log.Info(fmt.Sprintf("- %s (%s) required=%v — %s",
+			f.Name, f.Type, f.Required, f.Description))
+	}
 }

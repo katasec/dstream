@@ -12,11 +12,16 @@ import (
 )
 
 type TaskBlock struct {
-	Name       string   `hcl:"name,label"`
-	Type       string   `hcl:"type,optional"`
-	PluginPath string   `hcl:"plugin_path,optional"`
-	PluginRef  string   `hcl:"plugin_ref,optional"`
-	Config     hcl.Body `hcl:",remain"`
+	Name       string       `hcl:"name,label"`
+	Type       string       `hcl:"type,optional"`
+	PluginPath string       `hcl:"plugin_path,optional"`
+	PluginRef  string       `hcl:"plugin_ref,optional"`
+	Config     *ConfigBlock `hcl:"config,block"`
+}
+
+// Wrap the config block body so we can decode it later
+type ConfigBlock struct {
+	Remain hcl.Body `hcl:",remain"` // This captures everything in the config block
 }
 
 // ConfigAsStringMap parses the `config` block of a task and returns two maps:
@@ -50,7 +55,7 @@ func (t *TaskBlock) ConfigAsStringMap() (map[string]string, map[string]string, e
 	schema := &hcl.BodySchema{
 		Blocks: []hcl.BlockHeaderSchema{{Type: "config"}},
 	}
-	content, diags := t.Config.Content(schema)
+	content, diags := t.Config.Remain.Content(schema)
 	if diags.HasErrors() {
 		return nil, nil, fmt.Errorf("config block error: %s", diags.Error())
 	}

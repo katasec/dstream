@@ -10,6 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -22,107 +23,25 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type StartRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Config        map[string]string      `protobuf:"bytes,1,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *StartRequest) Reset() {
-	*x = StartRequest{}
-	mi := &file_proto_plugin_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StartRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StartRequest) ProtoMessage() {}
-
-func (x *StartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_plugin_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StartRequest.ProtoReflect.Descriptor instead.
-func (*StartRequest) Descriptor() ([]byte, []int) {
-	return file_proto_plugin_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *StartRequest) GetConfig() map[string]string {
-	if x != nil {
-		return x.Config
-	}
-	return nil
-}
-
-type StartResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *StartResponse) Reset() {
-	*x = StartResponse{}
-	mi := &file_proto_plugin_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StartResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StartResponse) ProtoMessage() {}
-
-func (x *StartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_plugin_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StartResponse.ProtoReflect.Descriptor instead.
-func (*StartResponse) Descriptor() ([]byte, []int) {
-	return file_proto_plugin_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *StartResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
+// ──────────────────────────────────────────────────────────────────────────────
+//
+//	Field-schema definition
+//
+// ──────────────────────────────────────────────────────────────────────────────
 type FieldSchema struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"` // e.g., "string", "int", "list", "map"
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // e.g. "lock", "provider"
+	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"` // "string", "list", "object", …
 	Required      bool                   `protobuf:"varint,3,opt,name=required,proto3" json:"required,omitempty"`
 	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	Fields        []*FieldSchema         `protobuf:"bytes,5,rep,name=fields,proto3" json:"fields,omitempty"` // populated when type == "object"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FieldSchema) Reset() {
 	*x = FieldSchema{}
-	mi := &file_proto_plugin_proto_msgTypes[2]
+	mi := &file_proto_plugin_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -134,7 +53,7 @@ func (x *FieldSchema) String() string {
 func (*FieldSchema) ProtoMessage() {}
 
 func (x *FieldSchema) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_plugin_proto_msgTypes[2]
+	mi := &file_proto_plugin_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -147,7 +66,7 @@ func (x *FieldSchema) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FieldSchema.ProtoReflect.Descriptor instead.
 func (*FieldSchema) Descriptor() ([]byte, []int) {
-	return file_proto_plugin_proto_rawDescGZIP(), []int{2}
+	return file_proto_plugin_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *FieldSchema) GetName() string {
@@ -178,40 +97,11 @@ func (x *FieldSchema) GetDescription() string {
 	return ""
 }
 
-type GetSchemaRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetSchemaRequest) Reset() {
-	*x = GetSchemaRequest{}
-	mi := &file_proto_plugin_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetSchemaRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetSchemaRequest) ProtoMessage() {}
-
-func (x *GetSchemaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_plugin_proto_msgTypes[3]
+func (x *FieldSchema) GetFields() []*FieldSchema {
 	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
+		return x.Fields
 	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetSchemaRequest.ProtoReflect.Descriptor instead.
-func (*GetSchemaRequest) Descriptor() ([]byte, []int) {
-	return file_proto_plugin_proto_rawDescGZIP(), []int{3}
+	return nil
 }
 
 type GetSchemaResponse struct {
@@ -223,7 +113,7 @@ type GetSchemaResponse struct {
 
 func (x *GetSchemaResponse) Reset() {
 	*x = GetSchemaResponse{}
-	mi := &file_proto_plugin_proto_msgTypes[4]
+	mi := &file_proto_plugin_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -235,7 +125,7 @@ func (x *GetSchemaResponse) String() string {
 func (*GetSchemaResponse) ProtoMessage() {}
 
 func (x *GetSchemaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_plugin_proto_msgTypes[4]
+	mi := &file_proto_plugin_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -248,7 +138,7 @@ func (x *GetSchemaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSchemaResponse.ProtoReflect.Descriptor instead.
 func (*GetSchemaResponse) Descriptor() ([]byte, []int) {
-	return file_proto_plugin_proto_rawDescGZIP(), []int{4}
+	return file_proto_plugin_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *GetSchemaResponse) GetFields() []*FieldSchema {
@@ -262,27 +152,18 @@ var File_proto_plugin_proto protoreflect.FileDescriptor
 
 const file_proto_plugin_proto_rawDesc = "" +
 	"\n" +
-	"\x12proto/plugin.proto\x12\x06plugin\x1a\x1bgoogle/protobuf/empty.proto\"\x83\x01\n" +
-	"\fStartRequest\x128\n" +
-	"\x06config\x18\x01 \x03(\v2 .plugin.StartRequest.ConfigEntryR\x06config\x1a9\n" +
-	"\vConfigEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\")\n" +
-	"\rStartResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"s\n" +
+	"\x12proto/plugin.proto\x12\x06plugin\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xa0\x01\n" +
 	"\vFieldSchema\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1a\n" +
 	"\brequired\x18\x03 \x01(\bR\brequired\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"\x12\n" +
-	"\x10GetSchemaRequest\"@\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12+\n" +
+	"\x06fields\x18\x05 \x03(\v2\x13.plugin.FieldSchemaR\x06fields\"@\n" +
 	"\x11GetSchemaResponse\x12+\n" +
-	"\x06fields\x18\x01 \x03(\v2\x13.plugin.FieldSchemaR\x06fields2E\n" +
-	"\rDStreamPlugin\x124\n" +
-	"\x05Start\x12\x14.plugin.StartRequest\x1a\x15.plugin.StartResponse2\x81\x01\n" +
-	"\x06Plugin\x125\n" +
-	"\x05Start\x12\x14.plugin.StartRequest\x1a\x16.google.protobuf.Empty\x12@\n" +
-	"\tGetSchema\x12\x18.plugin.GetSchemaRequest\x1a\x19.plugin.GetSchemaResponseB(Z&github.com/katasec/dstream/proto;protob\x06proto3"
+	"\x06fields\x18\x01 \x03(\v2\x13.plugin.FieldSchemaR\x06fields2\x82\x01\n" +
+	"\x06Plugin\x12>\n" +
+	"\tGetSchema\x12\x16.google.protobuf.Empty\x1a\x19.plugin.GetSchemaResponse\x128\n" +
+	"\x05Start\x12\x17.google.protobuf.Struct\x1a\x16.google.protobuf.EmptyB(Z&github.com/katasec/dstream/proto;protob\x06proto3"
 
 var (
 	file_proto_plugin_proto_rawDescOnce sync.Once
@@ -296,27 +177,22 @@ func file_proto_plugin_proto_rawDescGZIP() []byte {
 	return file_proto_plugin_proto_rawDescData
 }
 
-var file_proto_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_proto_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_proto_plugin_proto_goTypes = []any{
-	(*StartRequest)(nil),      // 0: plugin.StartRequest
-	(*StartResponse)(nil),     // 1: plugin.StartResponse
-	(*FieldSchema)(nil),       // 2: plugin.FieldSchema
-	(*GetSchemaRequest)(nil),  // 3: plugin.GetSchemaRequest
-	(*GetSchemaResponse)(nil), // 4: plugin.GetSchemaResponse
-	nil,                       // 5: plugin.StartRequest.ConfigEntry
-	(*emptypb.Empty)(nil),     // 6: google.protobuf.Empty
+	(*FieldSchema)(nil),       // 0: plugin.FieldSchema
+	(*GetSchemaResponse)(nil), // 1: plugin.GetSchemaResponse
+	(*emptypb.Empty)(nil),     // 2: google.protobuf.Empty
+	(*structpb.Struct)(nil),   // 3: google.protobuf.Struct
 }
 var file_proto_plugin_proto_depIdxs = []int32{
-	5, // 0: plugin.StartRequest.config:type_name -> plugin.StartRequest.ConfigEntry
-	2, // 1: plugin.GetSchemaResponse.fields:type_name -> plugin.FieldSchema
-	0, // 2: plugin.DStreamPlugin.Start:input_type -> plugin.StartRequest
-	0, // 3: plugin.Plugin.Start:input_type -> plugin.StartRequest
-	3, // 4: plugin.Plugin.GetSchema:input_type -> plugin.GetSchemaRequest
-	1, // 5: plugin.DStreamPlugin.Start:output_type -> plugin.StartResponse
-	6, // 6: plugin.Plugin.Start:output_type -> google.protobuf.Empty
-	4, // 7: plugin.Plugin.GetSchema:output_type -> plugin.GetSchemaResponse
-	5, // [5:8] is the sub-list for method output_type
-	2, // [2:5] is the sub-list for method input_type
+	0, // 0: plugin.FieldSchema.fields:type_name -> plugin.FieldSchema
+	0, // 1: plugin.GetSchemaResponse.fields:type_name -> plugin.FieldSchema
+	2, // 2: plugin.Plugin.GetSchema:input_type -> google.protobuf.Empty
+	3, // 3: plugin.Plugin.Start:input_type -> google.protobuf.Struct
+	1, // 4: plugin.Plugin.GetSchema:output_type -> plugin.GetSchemaResponse
+	2, // 5: plugin.Plugin.Start:output_type -> google.protobuf.Empty
+	4, // [4:6] is the sub-list for method output_type
+	2, // [2:4] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -333,9 +209,9 @@ func file_proto_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_plugin_proto_rawDesc), len(file_proto_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   2,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   1,
 		},
 		GoTypes:           file_proto_plugin_proto_goTypes,
 		DependencyIndexes: file_proto_plugin_proto_depIdxs,

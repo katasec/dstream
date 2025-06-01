@@ -6,4 +6,5 @@ const (
 	FieldTypeBool   = "bool"
 	FieldTypeList   = "list"
 	FieldTypeMap    = "map"
+	FieldTypeObject = "object"
 )

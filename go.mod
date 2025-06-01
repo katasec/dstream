@@ -10,9 +10,9 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.3
 	github.com/hashicorp/hcl/v2 v2.23.0
-	github.com/katasec/dstream-ingester-mssql v0.0.0-00010101000000-000000000000
 	github.com/microsoft/go-mssqldb v1.8.0
 	github.com/spf13/cobra v1.9.1
+	github.com/tmccombs/hcl2json v0.6.7
 	github.com/zclconf/go-cty v1.16.2
 	google.golang.org/grpc v1.72.0
 	google.golang.org/protobuf v1.36.6

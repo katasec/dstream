@@ -1,34 +1,55 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
-	mssql "github.com/katasec/dstream-ingester-mssql/mssql"
-	"github.com/katasec/dstream/pkg/plugins"
+	"github.com/katasec/dstream/pkg/config"
+	"github.com/katasec/dstream/pkg/executor"
+	"github.com/katasec/dstream/pkg/logging"
 	"github.com/spf13/cobra"
 )
 
+var (
+	taskName string
+)
+
+// ingesterCmd spins up any task whose name is supplied with --task (default:
+// "ingester-mssql"). It uses the same executor logic as `dstream run`.
 var ingesterCmd = &cobra.Command{
 	Use:   "ingester",
-	Short: "Start the DStream ingester",
-	Long:  `Start the DStream ingester which monitors SQL Server tables for changes using Change Data Capture (CDC) and sends them to the ingest queue.`,
+	Short: "Run an ingester task defined in dstream.hcl",
+	Long: `Launches the specified ingester task via the standard plugin
+executor. This avoids importing plugin code directly into the CLI.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ing := mssql.New()
-		ctx := context.Background()
+		log := logging.GetLogger()
 
-		err := ing.Start(ctx, func(e plugins.Event) error {
-			return nil
-		})
-
+		root, err := config.LoadRootHCL()
 		if err != nil {
-			return fmt.Errorf("failed to start ingester: %w", err)
+			return fmt.Errorf("failed to load dstream.hcl: %w", err)
 		}
 
+		var task *config.TaskBlock
+		for i := range root.Tasks {
+			if root.Tasks[i].Name == taskName {
+				task = &root.Tasks[i]
+				break
+			}
+		}
+		if task == nil {
+			return fmt.Errorf("task %q not found in configuration", taskName)
+		}
+
+		if err := executor.ExecuteTask(task); err != nil {
+			log.Error("Task execution failed", "task", taskName, "error", err)
+			return err
+		}
 		return nil
 	},
 }
 
 func init() {
+	// Default task name mirrors common example but can be overridden.
+	ingesterCmd.Flags().StringVar(&taskName, "task", "ingester-mssql",
+		"Name of the task block to execute from dstream.hcl")
 	rootCmd.AddCommand(ingesterCmd)
 }

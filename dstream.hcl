@@ -1,75 +1,29 @@
-dstream {
-  ingest {
-    provider = "azure"
+task "ingester-mssql" {
+  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.24"
+  config {
+    db_connection_string = "blah blah"
+    tables = ["Orders", "Customers"]
 
     ingest_queue {
+      provider = "azure"
       type              = "azure_service_bus"
       name              = "dstream-ingest"
-      connection_string = "{{ env "DSTREAM_INGEST_CONNECTION_STRING" }}"
+      connection_string = "xx"
     }
 
     lock {
+      provider = "azure"
       type              = "azure_blob"
-      connection_string = "{{ env "DSTREAM_LOCK_CONNECTION_STRING" }}"
+      connection_string = "xx"
       container_name    = "locks"
     }
 
     polling {
       interval     = "10s"
       max_interval = "300s"
-    }
-  }
-
-  plugin_registry = "ghcr.io/katasec"
-
-  required_plugins {
-    name    = "ingester-time"
-    version = "v0.0.1"
-  }
-
-  required_plugins {
-    name    = "router"
-    version = "0.0.1"
+    }    
   }
 }
-
-
-task "ingester-mssql" {
-  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.16"
-
-  config {
-    db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
-    tables = ["Orders", "Customers"]
-  }
-}
-
-# task "ingester-mssql" {
-#   plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.7"
-
-#   config {
-#     db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
-#     tables = ["Orders", "Customers"]
-
-#     provider = "azure"
-
-#     ingest_queue {
-#       type              = "azure_service_bus"
-#       name              = "dstream-ingest"
-#       connection_string = "{{ env "DSTREAM_INGEST_CONNECTION_STRING" }}"
-#     }
-
-#     lock {
-#       type              = "azure_blob"
-#       connection_string = "{{ env "DSTREAM_LOCK_CONNECTION_STRING" }}"
-#       container_name    = "locks"
-#     }
-
-#     polling {
-#       interval     = "10s"
-#       max_interval = "300s"
-#     }    
-#   }
-# }
 
 task "ingest-time" {
   type       = "ingester"

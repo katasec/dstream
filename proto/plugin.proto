@@ -5,34 +5,27 @@ package plugin;
 option go_package = "github.com/katasec/dstream/proto;proto";
 
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 
-service DStreamPlugin {
-  rpc Start(StartRequest) returns (StartResponse);
-}
-
-message StartRequest {
-  map<string, string> config = 1;
-}
-
-message StartResponse {
-  string message = 1;
-}
-
-
+// ──────────────────────────────────────────────────────────────────────────────
+//  Field-schema definition
+// ──────────────────────────────────────────────────────────────────────────────
 message FieldSchema {
-  string name = 1;
-  string type = 2;         // e.g., "string", "int", "list", "map"
-  bool required = 3;
+  string name        = 1;    // e.g. "lock", "provider"
+  string type        = 2;    // "string", "list", "object", …
+  bool   required    = 3;
   string description = 4;
+  repeated FieldSchema fields = 5; // populated when type == "object"
 }
-
-message GetSchemaRequest {}
 
 message GetSchemaResponse {
   repeated FieldSchema fields = 1;
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+//  Plugin RPC surface
+// ──────────────────────────────────────────────────────────────────────────────
 service Plugin {
-  rpc Start (StartRequest) returns (google.protobuf.Empty);
-  rpc GetSchema (GetSchemaRequest) returns (GetSchemaResponse); // <-- Add this
+  rpc GetSchema (google.protobuf.Empty)  returns (GetSchemaResponse);
+  rpc Start     (google.protobuf.Struct) returns (google.protobuf.Empty);
 }
