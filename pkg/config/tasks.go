@@ -12,15 +12,40 @@ import (
 )
 
 type TaskBlock struct {
-	Name       string `hcl:"name,label"`
-	Type       string `hcl:"type,optional"`
-	PluginPath string `hcl:"plugin_path,optional"`
-	PluginRef  string `hcl:"plugin_ref,optional"`
-
-	Config hcl.Body `hcl:",remain"`
+	Name       string   `hcl:"name,label"`
+	Type       string   `hcl:"type,optional"`
+	PluginPath string   `hcl:"plugin_path,optional"`
+	PluginRef  string   `hcl:"plugin_ref,optional"`
+	Config     hcl.Body `hcl:",remain"`
 }
 
-// ConfigAsStringMap returns (values, types, error)
+// ConfigAsStringMap parses the `config` block of a task and returns two maps:
+//  1. A map of field names to their stringified values.
+//  2. A map of field names to their detected types (e.g., "string", "list").
+//
+// Example:
+//
+// Given this HCL:
+//
+//	task "ingester-mssql" {
+//	  config {
+//	    db_connection_string = "Server=localhost"
+//	    tables = ["Orders", "Customers"]
+//	  }
+//	}
+//
+// Returns:
+//
+//	values: {
+//	  "db_connection_string": "Server=localhost",
+//	  "tables": "Orders,Customers"
+//	}
+//	types: {
+//	  "db_connection_string": "string",
+//	  "tables": "list"
+//	}
+//
+// This allows plugins to receive a uniform map of string values
 func (t *TaskBlock) ConfigAsStringMap() (map[string]string, map[string]string, error) {
 	schema := &hcl.BodySchema{
 		Blocks: []hcl.BlockHeaderSchema{{Type: "config"}},
@@ -38,6 +63,11 @@ func (t *TaskBlock) ConfigAsStringMap() (map[string]string, map[string]string, e
 		return nil, nil, fmt.Errorf("attribute decode error: %s", diags.Error())
 	}
 
+	return decodeAttributes(attrs)
+}
+
+// decodeAttributes parses attribute values and returns their stringified form and type.
+func decodeAttributes(attrs hcl.Attributes) (map[string]string, map[string]string, error) {
 	vals := make(map[string]string)
 	types := make(map[string]string)
 
@@ -47,61 +77,97 @@ func (t *TaskBlock) ConfigAsStringMap() (map[string]string, map[string]string, e
 			return nil, nil, fmt.Errorf("value error for %s: %s", name, diags.Error())
 		}
 
-		switch {
-		case val.Type().Equals(cty.String):
-			vals[name] = val.AsString()
-			types[name] = proto.FieldTypeString
-
-		case val.Type().Equals(cty.Number):
-			// stringify the number
-			vals[name] = val.AsBigFloat().Text('f', -1)
-			types[name] = proto.FieldTypeInt
-
-		case val.Type().Equals(cty.Bool):
-			vals[name] = strconv.FormatBool(val.True())
-			types[name] = proto.FieldTypeBool
-
-		case val.Type().IsListType() && val.Type().ElementType().Equals(cty.String):
-			vals[name] = joinStrings(val.AsValueSlice())
-			types[name] = proto.FieldTypeList
-
-		case val.Type().IsTupleType():
-			allStr := true
-			for _, et := range val.Type().TupleElementTypes() {
-				if !et.Equals(cty.String) {
-					allStr = false
-					break
-				}
-			}
-			if allStr {
-				vals[name] = joinStrings(val.AsValueSlice())
-				types[name] = proto.FieldTypeList
-			} else {
-				vals[name] = val.GoString()
-				types[name] = proto.FieldTypeList
-			}
-
-		case val.Type().IsMapType() || val.Type().IsObjectType():
-			if b, err := json.Marshal(val.GoString()); err == nil {
-				vals[name] = string(b)
-			} else {
-				vals[name] = val.GoString()
-			}
-			types[name] = proto.FieldTypeMap
-
-		default:
-			vals[name] = val.GoString()
-			types[name] = proto.FieldTypeString
-		}
+		strVal, fieldType := decodeCtyValue(val)
+		vals[name] = strVal
+		types[name] = fieldType
 	}
 
 	return vals, types, nil
 }
 
+// decodeCtyValue takes a cty.Value and returns:
+//  1. A stringified representation of the value (e.g., for transmission to a plugin or logging).
+//  2. A type descriptor string that represents the value's inferred type (e.g., "string", "int", "list").
+//
+// This function simplifies HCL-native values by flattening them into a basic string form
+// and tagging them with a type label. This is primarily used to send plugin configuration
+// as a uniform map[string]string along with metadata, so the receiving plugin can
+// deserialize or interpret the values appropriately.
+//
+// Supported value types include: strings, numbers, booleans, lists/tuples of strings,
+// and map/object types (which are serialized to JSON).
+//
+// Example:
+//
+//	decodeCtyValue(cty.StringVal("hello"))
+//	  → ("hello", "string")
+//
+//	decodeCtyValue(cty.ListVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")}))
+//	  → ("a,b", "list")
+//
+//	decodeCtyValue(cty.NumberIntVal(42))
+//	  → ("42", "int")
+func decodeCtyValue(val cty.Value) (string, string) {
+	valType := val.Type() // Reuse this throughout to avoid repeated calls
+
+	switch {
+	case valType.Equals(cty.String):
+		// Simple string value
+		return val.AsString(), proto.FieldTypeString
+
+	case valType.Equals(cty.Number):
+		// Numeric value converted to string using full precision
+		return val.AsBigFloat().Text('f', -1), proto.FieldTypeInt
+
+	case valType.Equals(cty.Bool):
+		// Boolean value converted to "true"/"false"
+		return strconv.FormatBool(val.True()), proto.FieldTypeBool
+
+	case valType.IsListType() && valType.ElementType().Equals(cty.String):
+		// List of strings converted to comma-separated string
+		return joinStrings(val.AsValueSlice()), proto.FieldTypeList
+
+	case valType.IsTupleType():
+		// If all tuple elements are strings, treat like a list
+		if isTupleOfStrings(valType) {
+			return joinStrings(val.AsValueSlice()), proto.FieldTypeList
+		}
+		return val.GoString(), proto.FieldTypeList
+
+	case valType.IsMapType() || valType.IsObjectType():
+		// Serialize map/object to JSON or fallback to Go-string
+		if b, err := json.Marshal(val.GoString()); err == nil {
+			return string(b), proto.FieldTypeMap
+		}
+		return val.GoString(), proto.FieldTypeMap
+
+	default:
+		// Fallback for unrecognized types
+		return val.GoString(), proto.FieldTypeString
+	}
+}
+
+// joinStrings takes a slice of cty.Value (assumed to be strings)
+// and joins them into a single comma-separated string.
+//
+// For example:
+//
+//	Input:  []cty.Value{cty.StringVal("A"), cty.StringVal("B")}
+//	Output: "A,B"
 func joinStrings(vs []cty.Value) string {
 	out := make([]string, len(vs))
 	for i, v := range vs {
 		out[i] = v.AsString()
 	}
 	return strings.Join(out, ",")
+}
+
+// isTupleOfStrings returns true if all elements in the tuple are strings.
+func isTupleOfStrings(t cty.Type) bool {
+	for _, et := range t.TupleElementTypes() {
+		if !et.Equals(cty.String) {
+			return false
+		}
+	}
+	return true
 }

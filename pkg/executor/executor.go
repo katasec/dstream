@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/katasec/dstream/pkg/config"
+	"github.com/katasec/dstream/pkg/logging"
 	"github.com/katasec/dstream/pkg/orasfetch"
 	"github.com/katasec/dstream/pkg/plugins/serve"
 )
@@ -68,6 +69,11 @@ func ExecuteTask(task *config.TaskBlock) error {
 
 	log.Info("Executor:", "Launching plugin:", pluginPath)
 
+	// Setup cmd
+	cmd := exec.Command(pluginPath)
+	cmd.Stdout = nil // silence stdout
+	cmd.Stderr = nil // silence stderr
+
 	//----------------------------------------------------------------------
 	// Start the plugin via go-plugin
 	//----------------------------------------------------------------------
@@ -76,8 +82,9 @@ func ExecuteTask(task *config.TaskBlock) error {
 		Plugins: map[string]plugin.Plugin{
 			"default": &serve.GenericPlugin{},
 		},
-		Cmd:              exec.Command(pluginPath),
+		Cmd:              cmd,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		Logger:           logging.NewHcLogAdapter(logging.GetLogger()),
 	})
 
 	rpcClient, err := client.Client()
