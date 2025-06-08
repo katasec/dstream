@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/tmccombs/hcl2json/convert"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -14,32 +14,38 @@ import (
 func bodyToStructPB(body hcl.Body) (*structpb.Struct, error) {
 	log.Info("[bodyToStructPB] Starting conversion...")
 
-	file := &hcl.File{Body: body}
-	obj, err := convert.File(file, convert.Options{})
+	// First try to decode the body to cty.Value
+	val, diags := decodeBodyToCty(body)
+	if diags.HasErrors() {
+		return nil, fmt.Errorf("failed to decode body: %s", diags.Error())
+	}
+
+	// Convert to JSON
+	jsonBytes, err := ctyjson.Marshal(val, val.Type())
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert HCL body: %w", err)
+		return nil, fmt.Errorf("marshal to JSON failed: %w", err)
+	}
+	log.Info("[bodyToStructPB] Raw JSON:", string(jsonBytes))
+
+	// Unmarshal into a map
+	var configMap map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &configMap); err != nil {
+		return nil, fmt.Errorf("unmarshal failed: %w", err)
 	}
 
-	// Marshal and unmarshal to normalize types
-	raw, err := json.Marshal(obj)
+	// Create structpb from the map
+	pb, err := structpb.NewStruct(configMap)
 	if err != nil {
-		return nil, fmt.Errorf("marshal failed: %w", err)
-	}
-	log.Info("[bodyToStructPB] Raw object from HCL:", string(raw))
-
-	var top interface{}
-	if err := json.Unmarshal(raw, &top); err != nil {
-		log.Error("[bodyToStructPB] Unmarshal failed:", err)
-		return nil, fmt.Errorf("decode config: %w", err)
+		return nil, fmt.Errorf("failed to create struct: %w", err)
 	}
 
-	if topMap, ok := top.(map[string]interface{}); ok {
-		log.Info("[bodyToStructPB] Top-level is map — using as-is.")
-		return structpb.NewStruct(topMap)
+	// Log the final struct for debugging
+	log.Info("[bodyToStructPB] Final config map being passed to plugin:")
+	for k, v := range configMap {
+		log.Info(fmt.Sprintf("  - %s: %+v", k, v))
 	}
 
-	log.Warn("[bodyToStructPB] Top-level is NOT map — wrapping manually under 'value'")
-	return structpb.NewStruct(map[string]interface{}{"value": top})
+	return pb, nil
 }
 
 // TaskBlock wrapper

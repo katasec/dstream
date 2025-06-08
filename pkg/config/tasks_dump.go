@@ -40,7 +40,7 @@ func (t *TaskBlock) DumpConfigAsJSON() (string, error) {
 	if jsonOut == "{}" || jsonOut == "" {
 		log.Warn("[DumpConfigAsJSON] WARNING: Output JSON is empty.")
 	} else {
-		log.Info("[DumpConfigAsJSON] Final JSON:", jsonOut)
+		log.Info("[DumpConfigAsJSON] Final JSON:", "json", jsonOut)
 	}
 
 	return jsonOut, nil

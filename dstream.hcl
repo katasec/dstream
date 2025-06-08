@@ -1,20 +1,20 @@
 task "ingester-mssql" {
-  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.24"
+  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.25"
   config {
-    db_connection_string = "blah blah"
+    db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
     tables = ["Orders", "Customers"]
 
     ingest_queue {
       provider = "azure"
       type              = "azure_service_bus"
       name              = "dstream-ingest"
-      connection_string = "xx"
+      connection_string = "{{ env "DSTREAM_INGEST_CONNECTION_STRING" }}"
     }
 
     lock {
       provider = "azure"
       type              = "azure_blob"
-      connection_string = "xx"
+      connection_string = "{{ env "DSTREAM_BLOB_CONNECTION_STRING"}}"
       container_name    = "locks"
     }
 
