@@ -25,7 +25,7 @@ func bodyToStructPB(body hcl.Body) (*structpb.Struct, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal to JSON failed: %w", err)
 	}
-	log.Info("[bodyToStructPB] Raw JSON:", string(jsonBytes))
+	//log.Info("[bodyToStructPB] Raw JSON:", string(jsonBytes))
 
 	// Unmarshal into a map
 	var configMap map[string]interface{}
@@ -39,11 +39,11 @@ func bodyToStructPB(body hcl.Body) (*structpb.Struct, error) {
 		return nil, fmt.Errorf("failed to create struct: %w", err)
 	}
 
-	// Log the final struct for debugging
-	log.Info("[bodyToStructPB] Final config map being passed to plugin:")
-	for k, v := range configMap {
-		log.Info(fmt.Sprintf("  - %s: %+v", k, v))
-	}
+	// // Log the final struct for debugging
+	// log.Info("[bodyToStructPB] Final config map being passed to plugin:")
+	// for k, v := range configMap {
+	// 	log.Info(fmt.Sprintf("  - %s: %+v", k, v))
+	// }
 
 	return pb, nil
 }

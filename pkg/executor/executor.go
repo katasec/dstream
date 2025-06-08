@@ -18,12 +18,12 @@ import (
 // ExecuteTask looks up a task in dstream.hcl and runs its plugin via gRPC.
 func ExecuteTask(task *config.TaskBlock) error {
 
-	if jsonCfg, err := task.DumpConfigAsJSON(); err != nil {
-		log.Error("Failed to dump config as JSON.", "Error:", err.Error())
-		return err
-	} else {
-		log.Info("Raw interpolated config block:", jsonCfg)
-	}
+	// if jsonCfg, err := task.DumpConfigAsJSON(); err != nil {
+	// 	log.Error("Failed to dump config as JSON.", "Error:", err.Error())
+	// 	return err
+	// } else {
+	// 	log.Info("Raw interpolated config block:", jsonCfg)
+	// }
 
 	// ── reload HCL root (env interpolation may change) ──────────────────
 	root, err := config.LoadRootHCL()
@@ -69,7 +69,7 @@ func ExecuteTask(task *config.TaskBlock) error {
 
 	// Create a custom logger for the plugin client that doesn't add redundant prefixes
 	hostLogger := logging.GetHCLogger()
-	
+
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: serve.Handshake,
 		Plugins: map[string]plugin.Plugin{
@@ -97,13 +97,13 @@ func ExecuteTask(task *config.TaskBlock) error {
 	}
 
 	// ── kick off the plugin with graceful shutdown support ──────────────────────────────────────────────
-	log.Debug("Starting plugin with config:", cfgStruct)
-	
+	//log.Debug("Starting plugin with config:", cfgStruct)
+
 	// Use RunWithGracefulShutdown to handle signals and graceful termination
 	err = RunWithGracefulShutdown(context.Background(), func(ctx context.Context) error {
 		return pluginClient.Start(ctx, cfgStruct)
 	})
-	
+
 	if err != nil {
 		return fmt.Errorf("plugin start failed: %w", err)
 	}
