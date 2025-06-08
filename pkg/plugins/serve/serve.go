@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"github.com/katasec/dstream/pkg/plugins"
 )
@@ -13,12 +14,13 @@ var Handshake = plugin.HandshakeConfig{
 }
 
 // Serve is called by a plugin's main() to expose its implementation.
-func Serve(impl plugins.Plugin) {
+func Serve(impl plugins.Plugin, logger hclog.Logger) {
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: Handshake,
 		Plugins: map[string]plugin.Plugin{
 			"default": &GenericServerPlugin{Impl: impl},
 		},
 		GRPCServer: plugin.DefaultGRPCServer,
+		Logger:     logger,
 	})
 }

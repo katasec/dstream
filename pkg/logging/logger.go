@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	hclog "github.com/hashicorp/go-hclog"
 )
 
 // LogLevel represents the logging level
@@ -69,10 +71,12 @@ func SetupLogging() {
 		logLevel := getLogLevel()
 
 		// Create loggers for each level with appropriate prefixes and colors
-		debugLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
-		infoLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
-		warnLogger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
-		errorLogger := log.New(os.Stderr, "", log.Ldate|log.Ltime)
+		// Use os.Stderr consistently for all log levels to match plugin logging
+		// Add distinctive prefixes to make host logs more visible
+		debugLogger := log.New(os.Stderr, "[HOST-DEBUG] ", log.Ldate|log.Ltime)
+		infoLogger := log.New(os.Stderr, "[HOST-INFO] ", log.Ldate|log.Ltime)
+		warnLogger := log.New(os.Stderr, "[HOST-WARN] ", log.Ldate|log.Ltime)
+		errorLogger := log.New(os.Stderr, "[HOST-ERROR] ", log.Ldate|log.Ltime)
 
 		// Create logger
 		globalLogger = &stdLogger{
@@ -87,7 +91,19 @@ func SetupLogging() {
 
 // GetLogger returns the global logger instance
 func GetLogger() Logger {
+	if globalLogger == nil {
+		SetupLogging()
+	}
 	return globalLogger
+}
+
+// GetHCLogger returns an hclog-compatible logger that wraps the standard logger
+func GetHCLogger() hclog.Logger {
+	// Get the standard logger
+	stdLogger := GetLogger()
+
+	// Wrap it in the HcLogAdapter
+	return NewHcLogAdapter(stdLogger)
 }
 
 // Helper function to get log level from environment

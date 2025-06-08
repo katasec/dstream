@@ -13,7 +13,7 @@ import (
 // It will block until either the task completes or a shutdown signal (SIGINT/SIGTERM) is received.
 // If a shutdown signal is received, it will cancel the context and wait for the task to complete cleanup.
 func RunWithGracefulShutdown(ctx context.Context, taskFn func(context.Context) error) error {
-	log := logging.GetLogger()
+	log := logging.GetHCLogger()
 	
 	// Create a cancellable context that can be used for graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)

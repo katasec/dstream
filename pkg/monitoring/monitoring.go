@@ -7,7 +7,7 @@ import (
 	"github.com/katasec/dstream/pkg/logging"
 )
 
-var log = logging.GetLogger()
+var log = logging.GetHCLogger()
 
 // Monitor holds the configuration for memory logging
 type Monitor struct {

@@ -23,7 +23,7 @@ var rootCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		logLevel = resolveLogLevel()
 		logging.SetLogLevel(logLevel)
-		logging.GetLogger().Info("Log level set to", "level", logLevel)
+		logging.GetHCLogger().Info("Log level set to", "level", logLevel)
 	},
 }
 

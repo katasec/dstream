@@ -21,7 +21,7 @@ var ingesterCmd = &cobra.Command{
 	Long: `Launches the specified ingester task via the standard plugin
 executor. This avoids importing plugin code directly into the CLI.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		log := logging.GetLogger()
+		log := logging.GetHCLogger()
 
 		root, err := config.LoadRootHCL()
 		if err != nil {

@@ -1,5 +1,5 @@
 task "ingester-mssql" {
-  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.27"
+  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.35"
   config {
     db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
     tables = ["Cars", "Persons"]
@@ -19,8 +19,8 @@ task "ingester-mssql" {
     }
 
     polling {
-      interval     = "10s"
-      max_interval = "300s"
+      interval     = "1s"
+      max_interval = "5s"
     }    
   }
 }

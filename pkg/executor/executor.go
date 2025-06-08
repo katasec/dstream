@@ -7,7 +7,6 @@ import (
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/katasec/dstream/pkg/config"
-	"github.com/katasec/dstream/pkg/logging"
 	"github.com/katasec/dstream/pkg/orasfetch"
 	"github.com/katasec/dstream/pkg/plugins" // NEW – universal interface
 	"github.com/katasec/dstream/pkg/plugins/serve"
@@ -73,7 +72,7 @@ func ExecuteTask(task *config.TaskBlock) error {
 		},
 		Cmd:              cmd,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
-		Logger:           logging.NewHcLogAdapter(log),
+		Logger:           log, // Already an hclog.Logger from GetHCLogger()
 	})
 
 	rpcClient, err := client.Client()

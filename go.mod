@@ -12,7 +12,6 @@ require (
 	github.com/hashicorp/hcl/v2 v2.23.0
 	github.com/microsoft/go-mssqldb v1.8.0
 	github.com/spf13/cobra v1.9.1
-	github.com/tmccombs/hcl2json v0.6.7
 	github.com/zclconf/go-cty v1.16.2
 	google.golang.org/grpc v1.72.0
 	google.golang.org/protobuf v1.36.6
@@ -27,6 +26,7 @@ require (
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/fatih/color v1.13.0 // indirect
+	github.com/go-test/deep v1.0.7 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
