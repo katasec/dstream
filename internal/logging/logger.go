@@ -70,8 +70,9 @@ func SetupLogging() {
 		// Get log level from environment
 		logLevel := getLogLevel()
 
-		// Create loggers for each level without prefixes
+		// Create loggers for each level with appropriate prefixes and colors
 		// Use os.Stderr consistently for all log levels to match plugin logging
+		// We use empty prefixes here because we'll add the level indicators in the logging methods
 		debugLogger := log.New(os.Stderr, "", log.Ldate|log.Ltime)
 		infoLogger := log.New(os.Stderr, "", log.Ldate|log.Ltime)
 		warnLogger := log.New(os.Stderr, "", log.Ldate|log.Ltime)
@@ -111,66 +112,34 @@ func getLogLevel() LogLevel {
 	switch level {
 	case "debug":
 		return LevelDebug
+	case "info":
+		return LevelInfo
 	case "warn":
 		return LevelWarn
 	case "error":
 		return LevelError
 	default:
-		return LevelInfo
+		return LevelInfo // Default to INFO level
 	}
 }
 
-// formatMessage formats the message with any additional arguments
-func formatMessage(msg string, args ...any) string {
-	if len(args) == 0 {
-		return msg
-	}
-
-	// Convert args to key-value pairs
-	pairs := make([]string, 0, len(args)/2)
-	for i := 0; i < len(args); i += 2 {
-		if i+1 < len(args) {
-			pairs = append(pairs, fmt.Sprintf("%v=%v", args[i], args[i+1]))
-		}
-	}
-
-	// If there are key-value pairs, append them to the message
-	if len(pairs) > 0 {
-		return fmt.Sprintf("%s [%s]", msg, strings.Join(pairs, " "))
-	}
-	return msg
-}
-
-// Printf provides compatibility with standard log.Printf
+// Printf implements the standard log.Printf method
 func (l *stdLogger) Printf(format string, v ...any) {
-	if l.logLevel <= LevelInfo {
-		l.info.Printf("%s[INFO]%s %s", colorInfo, colorReset, fmt.Sprintf(format, v...))
-	}
+	l.info.Printf(format, v...)
 }
 
-// Println provides compatibility with standard log.Println
+// Println implements the standard log.Println method
 func (l *stdLogger) Println(v ...any) {
-	if l.logLevel <= LevelInfo {
-		message := fmt.Sprintln(v...)
-		// Remove trailing newline that fmt.Sprintln adds
-		message = strings.TrimSuffix(message, "\n")
-		l.info.Printf("%s[INFO]%s %s", colorInfo, colorReset, message)
-	}
+	l.info.Println(v...)
 }
 
 // Debug logs a debug message
-// func (l *stdLogger) Debug(msg string, args ...any) {
-// 	if l.logLevel <= LevelDebug {
-// 		l.debug.Printf("%s [DEBUG] %s %s", colorDebug, colorReset, formatMessage(msg, args...))
-// 	}
-// }
-
 func (l *stdLogger) Debug(msg string, args ...any) {
 	if l.logLevel <= LevelDebug {
 		if len(args) > 0 {
-			l.debug.Printf("%s [DEBUG] %s%s %v", colorDebug, colorReset, msg, formatArgs(args))
+			l.debug.Printf("%s [DEBUG-HOST] %s%s %v", colorDebug, colorReset, msg, formatArgs(args))
 		} else {
-			l.debug.Printf("%s [DEBUG] %s%s", colorDebug, colorReset, msg)
+			l.debug.Printf("%s [DEBUG-HOST] %s%s", colorDebug, colorReset, msg)
 		}
 	}
 }
@@ -178,51 +147,33 @@ func (l *stdLogger) Debug(msg string, args ...any) {
 // Info logs an info message
 func (l *stdLogger) Info(msg string, args ...any) {
 	if l.logLevel <= LevelInfo {
-		l.info.Printf("%s [INFO] %s%s %s", colorInfo, colorReset, msg, formatArgs(args))
+		if len(args) > 0 {
+			l.info.Printf("%s [INFO-HOST] %s%s %v", colorInfo, colorReset, msg, formatArgs(args))
+		} else {
+			l.info.Printf("%s [INFO-HOST] %s%s", colorInfo, colorReset, msg)
+		}
 	}
 }
-
-// Info logs an info message
-// func (l *stdLogger) Info(msg string, args ...any) {
-// 	if l.logLevel <= LevelInfo {
-// 		if len(args) > 0 {
-// 			l.info.Printf("%s%s%s %v", colorInfo, msg, colorReset, formatArgs(args))
-// 		} else {
-// 			l.info.Printf("%s%s%s", colorInfo, msg, colorReset)
-// 		}
-// 	}
-// }
 
 // Warn logs a warning message
 func (l *stdLogger) Warn(msg string, args ...any) {
 	if l.logLevel <= LevelWarn {
-		l.warn.Printf("%s[WARN]%s %s", colorWarn, colorReset, formatMessage(msg, args...))
+		if len(args) > 0 {
+			l.warn.Printf("%s [WARN-HOST] %s%s %v", colorWarn, colorReset, msg, formatArgs(args))
+		} else {
+			l.warn.Printf("%s [WARN-HOST] %s%s", colorWarn, colorReset, msg)
+		}
 	}
 }
 
 // Error logs an error message
 func (l *stdLogger) Error(msg string, args ...any) {
 	if l.logLevel <= LevelError {
-		l.error.Printf("%s[ERROR]%s %s", colorError, colorReset, formatMessage(msg, args...))
-	}
-}
-
-// SetLogLevel updates the log level of the global logger at runtime
-func SetLogLevel(level string) {
-	var lvl LogLevel
-	switch strings.ToLower(level) {
-	case "debug":
-		lvl = LevelDebug
-	case "warn":
-		lvl = LevelWarn
-	case "error":
-		lvl = LevelError
-	default:
-		lvl = LevelInfo
-	}
-
-	if logger, ok := globalLogger.(*stdLogger); ok {
-		logger.logLevel = lvl
+		if len(args) > 0 {
+			l.error.Printf("%s [ERROR-HOST] %s%s %v", colorError, colorReset, msg, formatArgs(args))
+		} else {
+			l.error.Printf("%s [ERROR-HOST] %s%s", colorError, colorReset, msg)
+		}
 	}
 }
 
@@ -245,4 +196,27 @@ func formatArgs(args []any) string {
 		result.WriteString(fmt.Sprintf("%s=%v", key, value))
 	}
 	return result.String()
+}
+
+// SetLogLevel sets the log level for the global logger
+func SetLogLevel(level string) {
+	if globalLogger == nil {
+		SetupLogging()
+	}
+
+	var lvl LogLevel
+	switch strings.ToLower(level) {
+	case "debug":
+		lvl = LevelDebug
+	case "warn":
+		lvl = LevelWarn
+	case "error":
+		lvl = LevelError
+	default:
+		lvl = LevelInfo
+	}
+
+	if logger, ok := globalLogger.(*stdLogger); ok {
+		logger.logLevel = lvl
+	}
 }

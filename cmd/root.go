@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/katasec/dstream/pkg/logging"
+	"github.com/katasec/dstream/internal/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ var rootCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		logLevel = resolveLogLevel()
 		logging.SetLogLevel(logLevel)
-		logging.GetLogger().Info("Log level set to", "level", logLevel)
+		logging.GetHCLogger().Info("Log level set to", "level", logLevel)
 	},
 }
 
