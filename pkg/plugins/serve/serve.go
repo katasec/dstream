@@ -15,6 +15,7 @@ var Handshake = plugin.HandshakeConfig{
 
 // Serve is called by a plugin's main() to expose its implementation.
 func Serve(impl plugins.Plugin, logger hclog.Logger) {
+	// Create a plugin serve config
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: Handshake,
 		Plugins: map[string]plugin.Plugin{

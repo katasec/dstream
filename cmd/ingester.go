@@ -5,7 +5,7 @@ import (
 
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/executor"
-	"github.com/katasec/dstream/pkg/logging"
+	"github.com/katasec/dstream/internal/logging"
 	"github.com/spf13/cobra"
 )
 

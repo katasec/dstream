@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	publishertypes "github.com/katasec/dstream/internal/types/publisher"
-	"github.com/katasec/dstream/pkg/logging"
+	"github.com/katasec/dstream/internal/logging"
 )
 
 var log = logging.GetLogger()

@@ -13,7 +13,7 @@ import (
 	"github.com/katasec/dstream/internal/publisher/messaging/azure/servicebus"
 	publishertypes "github.com/katasec/dstream/internal/types/publisher"
 	"github.com/katasec/dstream/pkg/config"
-	"github.com/katasec/dstream/pkg/logging"
+	"github.com/katasec/dstream/internal/logging"
 )
 
 var log = logging.GetLogger()

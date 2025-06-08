@@ -37,7 +37,7 @@ func (o *GenericTableMonitoringOrchestrator) Start(ctx context.Context) error {
 	defer cancel()
 
 	log.Info("Starting table monitoring orchestrator")
-	
+
 	// Start monitors for each table
 	for _, table := range o.tablesToMonitor {
 		lockID := fmt.Sprintf("lock-%s", table.Name)
@@ -59,7 +59,7 @@ func (o *GenericTableMonitoringOrchestrator) Start(ctx context.Context) error {
 	// Wait for context cancellation (which will come from the framework)
 	<-ctx.Done()
 	log.Info("Context cancelled, shutting down orchestrator")
-	
+
 	// Wait for all monitors to complete
 	wg.Wait()
 	log.Info("All monitors shut down")

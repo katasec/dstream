@@ -6,6 +6,8 @@ import (
 	"os/exec"
 
 	"github.com/hashicorp/go-plugin"
+
+	"github.com/katasec/dstream/internal/logging"
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/orasfetch"
 	"github.com/katasec/dstream/pkg/plugins" // NEW – universal interface
@@ -65,6 +67,9 @@ func ExecuteTask(task *config.TaskBlock) error {
 	cmd := exec.Command(pluginPath)
 	cmd.Stdout, cmd.Stderr = nil, nil
 
+	// Create a custom logger for the plugin client that doesn't add redundant prefixes
+	hostLogger := logging.GetHCLogger()
+	
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: serve.Handshake,
 		Plugins: map[string]plugin.Plugin{
@@ -72,7 +77,7 @@ func ExecuteTask(task *config.TaskBlock) error {
 		},
 		Cmd:              cmd,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
-		Logger:           log, // Already an hclog.Logger from GetHCLogger()
+		Logger:           hostLogger,
 	})
 
 	rpcClient, err := client.Client()
