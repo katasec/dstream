@@ -92,9 +92,15 @@ func ExecuteTask(task *config.TaskBlock) error {
 		dumpSchema(schema)
 	}
 
-	// ── kick off the plugin ──────────────────────────────────────────────
+	// ── kick off the plugin with graceful shutdown support ──────────────────────────────────────────────
 	log.Debug("Starting plugin with config:", cfgStruct)
-	if err := pluginClient.Start(context.Background(), cfgStruct); err != nil {
+	
+	// Use RunWithGracefulShutdown to handle signals and graceful termination
+	err = RunWithGracefulShutdown(context.Background(), func(ctx context.Context) error {
+		return pluginClient.Start(ctx, cfgStruct)
+	})
+	
+	if err != nil {
 		return fmt.Errorf("plugin start failed: %w", err)
 	}
 	return nil
@@ -102,9 +108,9 @@ func ExecuteTask(task *config.TaskBlock) error {
 
 // dumpSchema logs the schema in a readable format.
 func dumpSchema(fields []*pb.FieldSchema) {
-	log.Info("Schema returned from plugin:")
+	log.Debug("Schema returned from plugin:")
 	for _, f := range fields {
-		log.Info(fmt.Sprintf("- %s (%s) required=%v — %s",
+		log.Debug(fmt.Sprintf("- %s (%s) required=%v — %s",
 			f.Name, f.Type, f.Required, f.Description))
 	}
 }
