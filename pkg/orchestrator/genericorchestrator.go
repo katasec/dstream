@@ -4,13 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/locking"
+	"github.com/katasec/dstream/pkg/logging"
 )
 
 // GenericTableMonitoringOrchestrator is a plugin-agnostic orchestrator
@@ -33,13 +31,14 @@ func NewGenericTableMonitoringOrchestrator(db *sql.DB, lockerFactory *locking.Lo
 
 // Start launches table monitors concurrently and manages graceful shutdown
 func (o *GenericTableMonitoringOrchestrator) Start(ctx context.Context) error {
+	log := logging.GetLogger()
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
+	log.Info("Starting table monitoring orchestrator")
+	
+	// Start monitors for each table
 	for _, table := range o.tablesToMonitor {
 		lockID := fmt.Sprintf("lock-%s", table.Name)
 		lock, err := o.lockerFactory.CreateLocker(lockID)
@@ -57,16 +56,19 @@ func (o *GenericTableMonitoringOrchestrator) Start(ctx context.Context) error {
 		go o.startMonitor(ctx, &wg, table, lock, lockID)
 	}
 
-	<-sigChan
-	log.Info("Shutdown signal received")
-	cancel()
+	// Wait for context cancellation (which will come from the framework)
+	<-ctx.Done()
+	log.Info("Context cancelled, shutting down orchestrator")
+	
+	// Wait for all monitors to complete
 	wg.Wait()
 	log.Info("All monitors shut down")
-	return nil
+	return ctx.Err()
 }
 
 // startMonitor launches a single monitor instance with lock lifecycle
 func (o *GenericTableMonitoringOrchestrator) startMonitor(ctx context.Context, wg *sync.WaitGroup, table config.ResolvedTableConfig, lock locking.DistributedLocker, lockID string) {
+	log := logging.GetLogger()
 	defer wg.Done()
 	defer func() {
 		if err := lock.ReleaseLock(ctx, lockID, ""); err != nil {
@@ -83,7 +85,7 @@ func (o *GenericTableMonitoringOrchestrator) startMonitor(ctx context.Context, w
 	}
 
 	log.Info("Started monitoring table", "table", table.Name)
-	if err := monitor.MonitorTable(ctx); err != nil {
+	if err := monitor.MonitorTable(ctx); err != nil && err != context.Canceled {
 		log.Error("Monitor failed", "table", table.Name, "error", err)
 	}
 }
