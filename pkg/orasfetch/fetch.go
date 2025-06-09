@@ -10,6 +10,7 @@ import (
 )
 
 func PullBinary(ref string) (string, error) {
+
 	name, version, err := parseRef(ref)
 	if err != nil {
 		return "", err
@@ -37,7 +38,7 @@ func PullBinary(ref string) (string, error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	fmt.Printf("[orasfetch] Pulling plugin from: %s → %s\n", ref, pluginPath)
+	log.Info("Pulling plugin", "ref", ref, "path", pluginPath)
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("oras pull failed: %w", err)
 	}
