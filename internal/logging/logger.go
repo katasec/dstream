@@ -148,9 +148,9 @@ func (l *stdLogger) Debug(msg string, args ...any) {
 func (l *stdLogger) Info(msg string, args ...any) {
 	if l.logLevel <= LevelInfo {
 		if len(args) > 0 {
-			l.info.Printf("%s [INFO-HOST] %s%s %v", colorInfo, colorReset, msg, formatArgs(args))
+			l.info.Printf("%s[INFO-HOST] %s%s %v", colorInfo, colorReset, msg, formatArgs(args))
 		} else {
-			l.info.Printf("%s [INFO-HOST] %s%s", colorInfo, colorReset, msg)
+			l.info.Printf("%s[INFO-HOST] %s%s", colorInfo, colorReset, msg)
 		}
 	}
 }
@@ -159,9 +159,9 @@ func (l *stdLogger) Info(msg string, args ...any) {
 func (l *stdLogger) Warn(msg string, args ...any) {
 	if l.logLevel <= LevelWarn {
 		if len(args) > 0 {
-			l.warn.Printf("%s [WARN-HOST] %s%s %v", colorWarn, colorReset, msg, formatArgs(args))
+			l.warn.Printf("%s[WARN-HOST] %s%s %v", colorWarn, colorReset, msg, formatArgs(args))
 		} else {
-			l.warn.Printf("%s [WARN-HOST] %s%s", colorWarn, colorReset, msg)
+			l.warn.Printf("%s[WARN-HOST] %s%s", colorWarn, colorReset, msg)
 		}
 	}
 }
@@ -170,9 +170,9 @@ func (l *stdLogger) Warn(msg string, args ...any) {
 func (l *stdLogger) Error(msg string, args ...any) {
 	if l.logLevel <= LevelError {
 		if len(args) > 0 {
-			l.error.Printf("%s [ERROR-HOST] %s%s %v", colorError, colorReset, msg, formatArgs(args))
+			l.error.Printf("%s[ERROR-HOST] %s%s %v", colorError, colorReset, msg, formatArgs(args))
 		} else {
-			l.error.Printf("%s [ERROR-HOST] %s%s", colorError, colorReset, msg)
+			l.error.Printf("%s[ERROR-HOST] %s%s", colorError, colorReset, msg)
 		}
 	}
 }

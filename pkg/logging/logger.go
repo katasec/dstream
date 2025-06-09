@@ -168,9 +168,9 @@ func (l *stdLogger) Println(v ...any) {
 func (l *stdLogger) Debug(msg string, args ...any) {
 	if l.logLevel <= LevelDebug {
 		if len(args) > 0 {
-			l.debug.Printf("%s [DEBUG] %s%s %v", colorDebug, colorReset, msg, formatArgs(args))
+			l.debug.Printf("%s[DEBUG] %s%s %v", colorDebug, colorReset, msg, formatArgs(args))
 		} else {
-			l.debug.Printf("%s [DEBUG] %s%s", colorDebug, colorReset, msg)
+			l.debug.Printf("%s[DEBUG] %s%s", colorDebug, colorReset, msg)
 		}
 	}
 }
@@ -178,7 +178,7 @@ func (l *stdLogger) Debug(msg string, args ...any) {
 // Info logs an info message
 func (l *stdLogger) Info(msg string, args ...any) {
 	if l.logLevel <= LevelInfo {
-		l.info.Printf("%s [INFO] %s%s %s", colorInfo, colorReset, msg, formatArgs(args))
+		l.info.Printf("%s[INFO] %s%s %s", colorInfo, colorReset, msg, formatArgs(args))
 	}
 }
 

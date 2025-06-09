@@ -1,5 +1,5 @@
 task "ingester-mssql" {
-  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.43"
+  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.50"
   config {
     db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
     tables = ["Cars", "Persons"]

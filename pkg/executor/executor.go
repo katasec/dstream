@@ -10,9 +10,10 @@ import (
 	"github.com/katasec/dstream/internal/logging"
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/orasfetch"
-	"github.com/katasec/dstream/pkg/plugins" // NEW – universal interface
+	"github.com/katasec/dstream/pkg/plugins"
 	"github.com/katasec/dstream/pkg/plugins/serve"
 	pb "github.com/katasec/dstream/proto" // for schema dump
+	sdkLogging "github.com/katasec/dstream/sdk/logging"
 )
 
 // ExecuteTask looks up a task in dstream.hcl and runs its plugin via gRPC.
@@ -70,6 +71,12 @@ func ExecuteTask(task *config.TaskBlock) error {
 	// Create a custom logger for the plugin client that doesn't add redundant prefixes
 	hostLogger := logging.GetHCLogger()
 
+	// Use the clean logger without prefixes
+	sdklogger := sdkLogging.SetupCleanLogger() // Initialize clean SDK logging without prefixes
+	sdklogger.Info("Hello sdklogger")
+
+	// Set the logger for the plugin client
+	//hostLogger.SetLogger(sdklogger)
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: serve.Handshake,
 		Plugins: map[string]plugin.Plugin{
@@ -77,8 +84,10 @@ func ExecuteTask(task *config.TaskBlock) error {
 		},
 		Cmd:              cmd,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
-		Logger:           hostLogger,
+		Logger:           sdklogger,
 	})
+
+	hostLogger.Info("Hello World!")
 
 	rpcClient, err := client.Client()
 	if err != nil {

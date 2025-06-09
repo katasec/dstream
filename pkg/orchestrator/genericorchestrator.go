@@ -8,7 +8,7 @@ import (
 
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/locking"
-	"github.com/katasec/dstream/pkg/logging"
+	"github.com/katasec/dstream/sdk/logging"
 )
 
 // GenericTableMonitoringOrchestrator is a plugin-agnostic orchestrator
@@ -31,7 +31,7 @@ func NewGenericTableMonitoringOrchestrator(db *sql.DB, lockerFactory *locking.Lo
 
 // Start launches table monitors concurrently and manages graceful shutdown
 func (o *GenericTableMonitoringOrchestrator) Start(ctx context.Context) error {
-	log := logging.GetHCLogger()
+	log := logging.SetupBareLogger()
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -68,7 +68,7 @@ func (o *GenericTableMonitoringOrchestrator) Start(ctx context.Context) error {
 
 // startMonitor launches a single monitor instance with lock lifecycle
 func (o *GenericTableMonitoringOrchestrator) startMonitor(ctx context.Context, wg *sync.WaitGroup, table config.ResolvedTableConfig, lock locking.DistributedLocker, lockID string) {
-	log := logging.GetHCLogger()
+	log := logging.SetupBareLogger()
 	defer wg.Done()
 	defer func() {
 		if err := lock.ReleaseLock(ctx, lockID, ""); err != nil {

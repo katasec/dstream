@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	_ "github.com/denisenkom/go-mssqldb"
-	"github.com/katasec/dstream/pkg/logging"
+	"github.com/katasec/dstream/sdk/logging"
 )
 
 func Connect(connectionString string) (*sql.DB, error) {
@@ -19,10 +19,10 @@ func Connect(connectionString string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to ping database: %v", err)
 	} else {
-		logging.GetLogger().Info("Successfully pinged database")
+		logging.SetupBareLogger().Info("Successfully pinged database")
 	}
 
-	var log = logging.GetLogger()
+	var log = logging.SetupBareLogger()
 	log.Info("Successfully connected to database")
 
 	return db, nil
