@@ -1,5 +1,5 @@
 task "ingester-mssql" {
-  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.50"
+  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.42"
   config {
     db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
     tables = ["Cars", "Persons"]
@@ -23,7 +23,10 @@ task "ingester-mssql" {
       max_interval = "30s"
     }    
   }
+  
 }
+
+
 
 task "ingest-time" {
   type       = "ingester"
