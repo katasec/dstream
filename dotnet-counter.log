@@ -1,0 +1,20 @@
+[2025-06-27 16:43:50] Counter: 1
+[2025-06-27 16:43:55] Counter: 2
+[2025-06-27 16:44:00] Counter: 3
+[2025-06-27 16:44:05] Counter: 4
+[2025-06-27 16:44:10] Counter: 5
+[2025-06-27 16:44:15] Counter: 6
+[2025-06-27 16:44:20] Counter: 7
+[2025-06-27 16:44:25] Counter: 8
+[2025-06-27 16:44:30] Counter: 9
+[2025-06-27 16:44:35] Counter: 10
+[2025-06-27 16:44:40] Counter: 11
+[2025-06-27 16:44:45] Counter: 12
+[2025-06-27 16:44:50] Counter: 13
+[2025-06-27 16:44:52] Plugin stopped by cancellation
+[6/27/2025 5:02:15 PM] .NET Counter plugin started
+[6/27/2025 5:02:15 PM] Counter: 1
+[6/27/2025 5:02:20 PM] Counter: 2
+[6/27/2025 5:02:25 PM] Counter: 3
+[6/27/2025 5:02:30 PM] Counter: 4
+[6/27/2025 5:02:31 PM] Plugin stopped by cancellation

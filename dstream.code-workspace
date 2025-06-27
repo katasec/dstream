@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../dstream-ingester-mssql"
+		},
+		{
+			"path": "../dstream-dotnet-test"
 		}
 	],
 	"settings": {}
