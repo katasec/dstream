@@ -39,7 +39,7 @@ task "ingest-time" {
 
 task "dotnet-counter" {
   type = "plugin"
-  plugin_path = "/Users/writeameer/progs/dstream-dotnet-test/out/dstream-dotnet-test"
+  plugin_path = "../dstream-dotnet-test/out/dstream-dotnet-test"
   
   config {
     // Any configuration parameters you want to pass to your plugin
