@@ -12,7 +12,6 @@ import (
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -36,7 +35,7 @@ const (
 // ──────────────────────────────────────────────────────────────────────────────
 type PluginClient interface {
 	GetSchema(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetSchemaResponse, error)
-	Start(ctx context.Context, in *structpb.Struct, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type pluginClient struct {
@@ -57,7 +56,7 @@ func (c *pluginClient) GetSchema(ctx context.Context, in *emptypb.Empty, opts ..
 	return out, nil
 }
 
-func (c *pluginClient) Start(ctx context.Context, in *structpb.Struct, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *pluginClient) Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, Plugin_Start_FullMethodName, in, out, cOpts...)
@@ -78,7 +77,7 @@ func (c *pluginClient) Start(ctx context.Context, in *structpb.Struct, opts ...g
 // ──────────────────────────────────────────────────────────────────────────────
 type PluginServer interface {
 	GetSchema(context.Context, *emptypb.Empty) (*GetSchemaResponse, error)
-	Start(context.Context, *structpb.Struct) (*emptypb.Empty, error)
+	Start(context.Context, *StartRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedPluginServer()
 }
 
@@ -92,7 +91,7 @@ type UnimplementedPluginServer struct{}
 func (UnimplementedPluginServer) GetSchema(context.Context, *emptypb.Empty) (*GetSchemaResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSchema not implemented")
 }
-func (UnimplementedPluginServer) Start(context.Context, *structpb.Struct) (*emptypb.Empty, error) {
+func (UnimplementedPluginServer) Start(context.Context, *StartRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Start not implemented")
 }
 func (UnimplementedPluginServer) mustEmbedUnimplementedPluginServer() {}
@@ -135,7 +134,7 @@ func _Plugin_GetSchema_Handler(srv interface{}, ctx context.Context, dec func(in
 }
 
 func _Plugin_Start_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(structpb.Struct)
+	in := new(StartRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -147,7 +146,7 @@ func _Plugin_Start_Handler(srv interface{}, ctx context.Context, dec func(interf
 		FullMethod: Plugin_Start_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PluginServer).Start(ctx, req.(*structpb.Struct))
+		return srv.(PluginServer).Start(ctx, req.(*StartRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

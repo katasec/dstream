@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../dstream-dotnet-test"
+		},
+		{
+			"path": "../Katasec.DStream.Plugins"
 		}
 	],
 	"settings": {}

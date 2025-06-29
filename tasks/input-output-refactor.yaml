@@ -1,0 +1,201 @@
+# Input/Output Stream Abstraction for DStream Plugins
+# Task list for refactoring the plugin model
+
+todos:
+  - id: proto-extend-schema
+    title: Extend plugin.proto with Input/Output config structs
+    description: |
+      Modify the plugin.proto definition to introduce `InputConfig`, `OutputConfig`, and update `Start()` to use `StartRequest` which includes structured input/output/config.
+    tags: [grpc, protocol, schema]
+    file: proto/plugin.proto
+    status: completed
+
+  - id: install-protoc
+    title: Install Protocol Buffers compiler (protoc)
+    description: |
+      Install the Protocol Buffers compiler (protoc) and required plugins for Go and .NET code generation.
+    tags: [setup, tools]
+    depends_on: [proto-extend-schema]
+    status: completed
+    
+  - id: go-generate-proto
+    title: Generate Go code from updated proto files
+    description: |
+      Regenerate Go code from the updated proto files using protoc.
+    tags: [go, grpc, codegen]
+    file: proto/plugin.pb.go, proto/plugin_grpc.pb.go
+    depends_on: [proto-extend-schema, install-protoc]
+    status: completed
+    
+  - id: dotnet-generate-proto
+    title: Generate .NET code from updated proto files
+    description: |
+      Regenerate C# code from the updated proto files in the Katasec.DStream.Plugins project.
+    tags: [csharp, grpc, codegen]
+    file: Katasec.DStream.Plugin/Proto/Plugin.cs
+    depends_on: [proto-extend-schema, install-protoc]
+    status: completed
+    
+  - id: fix-dotnet-build-error
+    title: Fix build error in .NET plugin after proto update
+    description: |
+      Update the PluginServiceImpl class in DStreamPluginHost.cs to use the new StartRequest parameter instead of Struct.
+    tags: [csharp, fix, build]
+    file: Katasec.DStream.Plugin/DStreamPluginHost.cs
+    depends_on: [dotnet-generate-proto]
+    status: completed
+    
+  - id: sdk-add-stream-item
+    title: Define StreamItem data model for cross-provider communication
+    description: |
+      Create a common StreamItem model that can represent data flowing between inputs and outputs, with appropriate serialization/deserialization support.
+    tags: [csharp, sdk, model]
+    file: Katasec.DStream.Plugin/Models/StreamItem.cs
+    depends_on: [dotnet-generate-proto]
+    status: completed
+
+  - id: sdk-add-iinput-ioutput
+    title: Add `IInput` and `IOutput` interfaces to .NET plugin SDK
+    description: |
+      Define abstract interfaces IInput and IOutput for C# plugin developers, using the shared `StreamItem` format. Include methods for initialization, reading, writing, and cleanup.
+    tags: [csharp, sdk, interface]
+    file: Katasec.DStream.Plugin/Interfaces/IInput.cs, Katasec.DStream.Plugin/Interfaces/IOutput.cs
+    depends_on: [sdk-add-stream-item]
+    status: completed
+
+  - id: sdk-add-provider-registry
+    title: Create provider registry for input/output implementations
+    description: |
+      Implement a registry system to dynamically register and resolve input/output providers by name, allowing plugins to use any registered provider.
+    tags: [csharp, sdk, registry]
+    file: Katasec.DStream.Plugin/ProviderRegistry.cs
+    depends_on: [sdk-add-iinput-ioutput]
+    status: completed
+
+  - id: sdk-update-plugin-host
+    title: Update DStreamPluginHost to support input/output providers
+    description: |
+      Refactor DStreamPluginHost to instantiate appropriate input/output providers based on configuration and pass them to the plugin.
+    tags: [csharp, sdk, host]
+    file: Katasec.DStream.Plugin/DStreamPluginHost.cs
+    depends_on: [sdk-add-provider-registry, dotnet-generate-proto]
+    status: completed
+
+  - id: sdk-update-idstream-plugin
+    title: Update IDStreamPlugin interface for input/output model
+    description: |
+      Modify IDStreamPlugin to use the new input/output model, replacing ExecuteAsync with ProcessAsync(IInput, IOutput, CancellationToken).
+    tags: [csharp, sdk, interface]
+    file: Katasec.DStream.Plugin/IDStreamPlugin.cs
+    depends_on: [sdk-add-iinput-ioutput]
+    status: completed
+
+  - id: go-update-plugin-server
+    title: Update Go plugin server to support new StartRequest
+    description: |
+      Refactor the plugin host/server in Go (pkg/plugins/serve) to handle the new `StartRequest`, extracting and forwarding input/output/config Structs to plugins.
+    tags: [go, grpc, plugin]
+    file: pkg/plugins/serve/generic_server.go
+    depends_on: [go-generate-proto]
+    status: completed
+
+  - id: go-update-plugin-client
+    title: Update Go plugin client to support new StartRequest
+    description: |
+      Refactor the plugin client in Go (pkg/plugins/serve) to handle the new `StartRequest`, extracting and forwarding input/output/config Structs to plugins.
+    tags: [go, grpc, plugin]
+    file: pkg/plugins/serve/generic_client.go
+    depends_on: [go-generate-proto]
+    status: completed
+
+  - id: hcl-extend-parser
+    title: Extend HCL parser to support input/output blocks with `provider` and `config`
+    description: |
+      Update the HCL parsing logic to extract `input.provider`, `input.config`, and similarly for `output`, and populate internal representations accordingly.
+    tags: [hcl, config]
+    file: pkg/config/parser.go
+    depends_on: [go-generate-proto]
+    status: pending
+
+  - id: hcl-schema-validation
+    title: Validate input/output config using plugin-provided schema
+    description: |
+      Call `GetSchema()` on the plugin to get expected schema for `input`, `output`, and `config`, then validate actual HCL values accordingly before calling Start.
+    tags: [validation, schema, hcl]
+    file: internal/executor/runner.go
+    depends_on: [hcl-extend-parser, go-update-plugin-server]
+    status: pending
+
+  - id: cli-send-startrequest
+    title: Send new StartRequest from CLI to plugin
+    description: |
+      Construct and send a `StartRequest` containing `InputConfig`, `OutputConfig`, and `global config` as StructPBs during plugin startup.
+    tags: [cli, grpc, plugin]
+    file: internal/executor/runner.go
+    depends_on: [hcl-schema-validation]
+    status: pending
+
+  - id: sdk-implement-base-providers
+    title: Implement base input/output providers
+    description: |
+      Create base implementations for common input providers (SQL, file, etc.) and output providers (message queue, file, etc.).
+    tags: [csharp, sdk, providers]
+    file: Katasec.DStream.Plugin/Providers/
+    depends_on: [sdk-add-iinput-ioutput]
+    status: pending
+
+  - id: publish-nuget-package
+    title: Publish and wait for new NuGet package
+    description: |
+      Publish the updated Katasec.DStream.Plugins NuGet package (v0.0.4) with all the input/output abstraction changes and wait for it to become active.
+    tags: [csharp, nuget, publish]
+    depends_on: [sdk-update-idstream-plugin, sdk-update-plugin-host]
+    status: completed
+    
+  - id: dotnet-plugin-refactor
+    title: Refactor dotnet plugin to use IInput/IOutput and new ProcessAsync signature
+    description: |
+      Update sample plugin to use the new input/output model, focusing on business logic rather than input/output concerns.
+      Update the dstream-dotnet-test project to reference the new NuGet package version.
+    tags: [csharp, plugin, sample]
+    file: dstream-dotnet-test/CounterPlugin.cs
+    depends_on: [publish-nuget-package]
+    status: completed
+
+  - id: schema-register-providers
+    title: Add provider registration and GetSchema per input/output provider
+    description: |
+      For each supported input/output provider, define their config schema and expose via GetSchema.
+    tags: [schema, plugin]
+    file: Katasec.DStream.Plugin/ProviderSchemas.cs
+    depends_on: [dotnet-plugin-refactor]
+    status: pending
+
+  - id: go-update-executor
+    title: Update executor to support input/output configuration
+    description: |
+      Modify the executor to extract input/output configuration from HCL and pass it to plugins via StartRequest.
+    tags: [go, executor]
+    file: pkg/executor/executor.go
+    depends_on: [go-update-plugin-server, go-update-plugin-client]
+    status: completed
+    
+  - id: update-dstream-hcl
+    title: Update dstream.hcl with new input/output format
+    description: |
+      Update the dotnet-counter task in dstream.hcl to use the new input/output configuration format.
+    tags: [hcl, config]
+    file: dstream.hcl
+    depends_on: [dotnet-plugin-refactor]
+    status: completed
+
+  - id: documentation-update
+    title: Update documentation for new plugin model
+    description: |
+      Create comprehensive documentation explaining the new input/output model, available providers, and how to implement custom providers.
+    tags: [docs]
+    file: docs/plugin-model.md
+    depends_on: [example-hcl-update]
+    status: pending
+
+

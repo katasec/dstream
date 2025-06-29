@@ -41,10 +41,23 @@ task "dotnet-counter" {
   type = "plugin"
   plugin_path = "../dstream-dotnet-test/out/dstream-dotnet-test"
   
+  // Global configuration for the plugin
   config {
-    // Any configuration parameters you want to pass to your plugin
-    // These will be available in the Start method's Struct parameter
-    interval = "5s"
+    interval = "5000"  // Interval in milliseconds between counter increments
+  }
+  
+  // Input configuration
+  input {
+    provider = "null"  // Null input provider as this plugin generates its own data
+    config = {}
+  }
+  
+  // Output configuration
+  output {
+    provider = "console"  // Console output provider to display counter values
+    config = {
+      format = "json"  // Output format (json or text)
+    }
   }
 }
 

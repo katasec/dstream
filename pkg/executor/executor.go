@@ -108,9 +108,15 @@ func ExecuteTask(task *config.TaskBlock) error {
 	// ── kick off the plugin with graceful shutdown support ──────────────────────────────────────────────
 	//log.Debug("Starting plugin with config:", cfgStruct)
 
+	// Create a StartRequest with the config
+	startReq := &pb.StartRequest{
+		Config: cfgStruct,
+		// Input and Output are nil for now - will be populated in future tasks
+	}
+
 	// Use RunWithGracefulShutdown to handle signals and graceful termination
 	err = RunWithGracefulShutdown(context.Background(), func(ctx context.Context) error {
-		return pluginClient.Start(ctx, cfgStruct)
+		return pluginClient.Start(ctx, startReq)
 	})
 
 	if err != nil {

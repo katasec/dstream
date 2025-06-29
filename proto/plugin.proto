@@ -23,9 +23,28 @@ message GetSchemaResponse {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+//  Input/Output configuration
+// ──────────────────────────────────────────────────────────────────────────────
+message InputConfig {
+  string provider = 1;                    // Name of the input provider (e.g., "sqlserver_cdc")
+  google.protobuf.Struct config = 2;      // Provider-specific configuration
+}
+
+message OutputConfig {
+  string provider = 1;                    // Name of the output provider (e.g., "azure_servicebus_topic")
+  google.protobuf.Struct config = 2;      // Provider-specific configuration
+}
+
+message StartRequest {
+  InputConfig input = 1;                  // Input configuration
+  OutputConfig output = 2;                // Output configuration
+  google.protobuf.Struct config = 3;      // Global plugin configuration
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 //  Plugin RPC surface
 // ──────────────────────────────────────────────────────────────────────────────
 service Plugin {
   rpc GetSchema (google.protobuf.Empty)  returns (GetSchemaResponse);
-  rpc Start     (google.protobuf.Struct) returns (google.protobuf.Empty);
+  rpc Start     (StartRequest) returns (google.protobuf.Empty);
 }

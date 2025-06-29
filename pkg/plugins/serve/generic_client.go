@@ -7,7 +7,6 @@ import (
 	pb "github.com/katasec/dstream/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -35,8 +34,8 @@ func (GenericPlugin) GRPCServer(*plugin.GRPCBroker, *plugin.GRPCServer) error { 
 
 type genericClient struct{ rpc pb.PluginClient }
 
-func (c *genericClient) Start(ctx context.Context, cfg *structpb.Struct) error {
-	_, err := c.rpc.Start(ctx, cfg)
+func (c *genericClient) Start(ctx context.Context, req *pb.StartRequest) error {
+	_, err := c.rpc.Start(ctx, req)
 	return err
 }
 
