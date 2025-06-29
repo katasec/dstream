@@ -7,7 +7,7 @@
 			"path": "../dstream-dotnet-test"
 		},
 		{
-			"path": "../Katasec.DStream.Plugins"
+			"path": "../Katasec.DStream.Plugin"
 		}
 	],
 	"settings": {}
