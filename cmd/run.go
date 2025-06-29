@@ -6,8 +6,11 @@ import (
 
 	"github.com/katasec/dstream/pkg/config"
 	"github.com/katasec/dstream/pkg/executor"
+	"github.com/katasec/dstream/internal/logging"
 	"github.com/spf13/cobra"
 )
+
+var log = logging.GetLogger()
 
 var runCmd = &cobra.Command{
 	Use:   "run [task_name]",

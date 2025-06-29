@@ -1,0 +1,223 @@
+# DStream CLI Cleanup Task List
+# This file contains tasks for removing database-specific code from the DStream CLI
+
+title: DStream CLI Cleanup - Removing Database-Specific Code
+description: |
+  Tasks for removing database-specific code from the DStream CLI to make it a thin shim
+  that only handles configuration and plugin orchestration. This will ensure the CLI
+  follows the principle of separation of concerns, with database-specific logic moved
+  to dedicated plugins.
+
+tasks:
+  # Phase 1: Analysis and Preparation
+  - id: analyze-dependencies
+    title: Analyze Package Dependencies
+    description: |
+      Analyze the dependencies between packages to understand what can be safely removed
+      and what needs to be preserved for the dotnet-counter plugin to continue working.
+    subtasks:
+      - Create dependency graph of DStream CLI packages
+      - Identify packages used only by database-specific code
+      - Document core packages needed for plugin orchestration
+      - Verify dotnet-counter plugin dependencies
+    tags: [analysis, dependencies]
+    status: completed
+    priority: high
+    
+  - id: create-test-suite
+    title: Create Test Suite for Dotnet-Counter Plugin
+    description: |
+      Create a comprehensive test suite for the dotnet-counter plugin to ensure
+      it continues to work after removing database-specific code.
+    subtasks:
+      - Create unit tests for dotnet-counter plugin
+      - Create integration tests for dotnet-counter plugin
+      - Set up CI/CD pipeline for testing
+    tags: [testing, dotnet-counter]
+    status: pending
+    priority: high
+    
+  # Phase 2: Package Removal
+  - id: remove-cdc-package
+    title: Remove CDC Package
+    description: |
+      Remove the CDC package from the DStream CLI as this functionality should be
+      moved to database-specific plugins.
+    subtasks:
+      - Remove pkg/cdc directory
+      - Update any imports referencing the CDC package
+      - Test dotnet-counter plugin still works
+    tags: [removal, cdc]
+    status: completed
+    priority: medium
+    
+  - id: remove-db-package
+    title: Remove DB Package
+    description: |
+      Remove the DB package from the DStream CLI as database connectivity should be
+      handled by database-specific plugins.
+    subtasks:
+      - Remove pkg/db directory
+      - Update any imports referencing the DB package
+      - Test dotnet-counter plugin still works
+    tags: [removal, db]
+    status: completed
+    priority: medium
+    
+  - id: remove-locking-package
+    title: Remove Locking Package
+    description: |
+      Remove the locking package from the DStream CLI as locking should be
+      handled by database-specific plugins.
+    subtasks:
+      - Remove pkg/locking directory
+      - Update any imports referencing the locking package
+      - Test dotnet-counter plugin still works
+    tags: [removal, locking]
+    status: completed
+    priority: medium
+    
+  - id: remove-orchestrator-package
+    title: Remove Orchestrator Package
+    description: |
+      Remove the orchestrator package from the DStream CLI as orchestration should be
+      handled by database-specific plugins.
+    subtasks:
+      - Remove pkg/orchestrator directory
+      - Update any imports referencing the orchestrator package
+      - Test dotnet-counter plugin still works
+    tags: [removal, orchestrator]
+    status: completed
+    priority: medium
+    
+  # Phase 3: Command Cleanup
+  - id: remove-ingester-command
+    title: Remove Ingester Command
+    description: |
+      Remove the ingester command completely as this functionality will be
+      handled by plugins in the new architecture.
+    subtasks:
+      - Remove ingester command from cmd package
+      - Remove ingester-related code from internal packages
+      - Update help text and documentation
+      - Test dotnet-counter plugin still works
+    tags: [command, ingester]
+    status: completed
+    priority: high
+    
+  - id: remove-router-command
+    title: Remove Router Command
+    description: |
+      Remove the router command completely as this functionality will be
+      handled by plugins in the new architecture.
+    subtasks:
+      - Remove router command from cmd package
+      - Remove router-related code from internal packages
+      - Update help text and documentation
+      - Test dotnet-counter plugin still works
+    tags: [command, router]
+    status: completed
+    priority: high
+    
+  # Phase 4: Configuration Updates
+  - id: remove-database-specific-config
+    title: Remove Database-Specific Configuration
+    description: |
+      Remove all database-specific configuration from the pkg/config package.
+      Focus configuration parsing and management solely on plugin configuration.
+    subtasks:
+      - Identify database-specific configuration in pkg/config
+      - Remove database-specific configuration structures
+      - Update configuration parsing to focus on plugin configuration
+      - Test dotnet-counter plugin still works
+    tags: [config, cleanup]
+    status: completed
+    priority: medium
+    
+  - id: update-hcl-schema
+    title: Update HCL Schema
+    description: |
+      Update the HCL schema to remove any database-specific configuration
+      and focus on plugin configuration.
+    subtasks:
+      - Remove database-specific configuration from HCL schema
+      - Update HCL parsing to focus on plugin configuration
+      - Test dotnet-counter plugin still works
+    tags: [config, hcl]
+    status: completed
+    priority: medium
+    
+  # Phase 5: Testing and Documentation
+  - id: comprehensive-testing
+    title: Comprehensive Testing
+    description: |
+      Perform comprehensive testing to ensure the DStream CLI works correctly
+      after removing database-specific code.
+    subtasks:
+      - Test all commands
+      - Test all plugins
+      - Test error handling
+      - Test configuration parsing
+    tags: [testing]
+    status: completed
+    priority: high
+    
+  # Phase 7: Final Cleanup
+  - id: cleanup-internal-packages
+    title: Clean up Internal Packages
+    description: |
+      Identify and remove unnecessary internal packages related to database-specific
+      functionality.
+    subtasks:
+      - Identify internal packages that can be removed
+      - Remove internal/router package
+      - Remove database-specific code from internal/publisher
+      - Test dotnet-counter plugin still works
+    tags: [internal, cleanup]
+    status: completed
+    priority: medium
+    
+  - id: cleanup-proto-files
+    title: Clean Up Proto Files
+    description: |
+      Remove unnecessary proto files and generated Go code that are related to
+      database-specific functionality and are no longer needed.
+    subtasks:
+      - Identify proto files related to database functionality
+      - Remove ingester-related proto files
+      - Remove database-related proto files
+      - Regenerate Go code from remaining proto files
+      - Test dotnet-counter plugin still works
+    tags: [cleanup, proto]
+    status: completed
+    priority: medium
+    
+  - id: remove-unused-dependencies
+    title: Remove Unused Dependencies
+    description: |
+      Remove unused dependencies from go.mod after removing database-specific code.
+    subtasks:
+      - Run go mod tidy
+      - Remove unused imports from source files
+      - Verify build still works
+    tags: [cleanup, dependencies]
+    status: completed
+    priority: low
+    
+  - id: code-review
+    title: Final Code Review
+    description: |
+      Perform a comprehensive code review to ensure that:
+      - No database-specific code remains in the CLI
+      - CLI acts as a thin shim for configuration and plugin orchestration
+      - Compatibility with existing plugins is maintained
+    findings: |
+      - The CLI now acts as a thin shim for plugin orchestration
+      - Database-specific code has been removed from the CLI's core functionality
+      - The plugin architecture is working correctly with the dotnet-counter plugin
+      - Some database-specific types remain in config.go but are not actively used
+      - Database-specific dependencies remain in go.mod but are only used by internal packages
+      - The internal/publisher package still contains database-specific code but is not used by the CLI
+    tags: [review, quality]
+    status: completed
+    priority: high

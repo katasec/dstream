@@ -4,9 +4,6 @@
 			"path": "."
 		},
 		{
-			"path": "../dstream-ingester-mssql"
-		},
-		{
 			"path": "../dstream-dotnet-test"
 		},
 		{

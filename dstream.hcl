@@ -1,41 +1,27 @@
-task "ingester-mssql" {
-  plugin_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.53"
-  config {
-    db_connection_string = "{{ env "DSTREAM_DB_CONNECTION_STRING" }}"
-    tables = ["Cars", "Persons"]
-
-    ingest_queue {
-      provider = "azure"
-      type              = "azure_service_bus"
-      name              = "dstream-ingest"
-      connection_string = "{{ env "DSTREAM_INGEST_CONNECTION_STRING" }}"
-    }
-
-    lock {
-      provider = "azure"
-      type              = "azure_blob"
-      connection_string = "{{ env "DSTREAM_BLOB_CONNECTION_STRING"}}"
-      container_name    = "locks"
-    }
-
-    polling {
-      interval     = "5s"
-      max_interval = "30s"
-    }    
-  }
-  
-}
-
-
-
-task "ingest-time" {
-  type       = "ingester"
-  plugin_ref = "ghcr.io/katasec/dstream-ingester-time:v0.0.1"
-
-  config {
-    interval = "5s"
-  }
-}
+# Example of a plugin-based database connector task
+# This would be implemented in a separate plugin repository
+# task "database-connector" {
+#   plugin_ref = "ghcr.io/katasec/dstream-database-connector:v1.0.0"
+#   config {
+#     connection_string = "{{ env "DATABASE_CONNECTION_STRING" }}"
+#     tables = ["Table1", "Table2"]
+#   }
+#   
+#   input {
+#     provider = "database"
+#     config {
+#       polling_interval = "5s"
+#     }
+#   }
+#   
+#   output {
+#     provider = "messaging"
+#     config {
+#       type = "azure_service_bus"
+#       connection_string = "{{ env "MESSAGING_CONNECTION_STRING" }}"
+#     }
+#   }
+# }
 
 task "dotnet-counter" {
   type = "plugin"

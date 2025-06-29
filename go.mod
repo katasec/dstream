@@ -4,9 +4,7 @@ go 1.24.2
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus v1.8.0
-	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.0
 	github.com/Masterminds/sprig v2.22.0+incompatible
-	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.3
 	github.com/hashicorp/hcl/v2 v2.23.0
