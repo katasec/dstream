@@ -116,6 +116,24 @@ todos:
     file: pkg/config/parser.go
     depends_on: [go-generate-proto]
     status: pending
+    
+  - id: hcl-update-task-struct
+    title: Update Task struct to include input/output fields
+    description: |
+      Modify the Task struct in pkg/config/types.go to include InputConfig and OutputConfig fields.
+    tags: [hcl, config, types]
+    file: pkg/config/types.go
+    depends_on: [go-generate-proto]
+    status: pending
+    
+  - id: hcl-update-decode-task
+    title: Update decodeTask function to handle input/output blocks
+    description: |
+      Modify the decodeTask function in pkg/config/parser.go to decode input and output blocks from HCL.
+    tags: [hcl, config, parser]
+    file: pkg/config/parser.go
+    depends_on: [hcl-update-task-struct]
+    status: pending
 
   - id: hcl-schema-validation
     title: Validate input/output config using plugin-provided schema
@@ -126,13 +144,31 @@ todos:
     depends_on: [hcl-extend-parser, go-update-plugin-server]
     status: pending
 
+  - id: cli-update-executor
+    title: Update executor to build StartRequest from Task
+    description: |
+      Modify the executor to build a StartRequest from the Task struct with input, output, and config fields.
+    tags: [cli, executor]
+    file: pkg/executor/executor.go
+    depends_on: [hcl-update-decode-task]
+    status: pending
+    
+  - id: cli-update-runner
+    title: Update runner to pass input/output config to executor
+    description: |
+      Modify the runner to extract input/output config from Task and pass it to the executor.
+    tags: [cli, runner]
+    file: cmd/run.go
+    depends_on: [cli-update-executor]
+    status: pending
+    
   - id: cli-send-startrequest
     title: Send new StartRequest from CLI to plugin
     description: |
       Construct and send a `StartRequest` containing `InputConfig`, `OutputConfig`, and `global config` as StructPBs during plugin startup.
     tags: [cli, grpc, plugin]
-    file: internal/executor/runner.go
-    depends_on: [hcl-schema-validation]
+    file: pkg/executor/executor.go
+    depends_on: [hcl-schema-validation, cli-update-executor]
     status: pending
 
   - id: sdk-implement-base-providers
@@ -188,6 +224,23 @@ todos:
     file: dstream.hcl
     depends_on: [dotnet-plugin-refactor]
     status: completed
+    
+  - id: update-example-hcl
+    title: Update example HCL files with new input/output format
+    description: |
+      Update example HCL files in the examples directory to demonstrate the new input/output configuration format.
+    tags: [hcl, example, config]
+    file: examples/
+    depends_on: [hcl-update-decode-task]
+    status: pending
+    
+  - id: test-dotnet-counter
+    title: Test dotnet-counter plugin with new input/output format
+    description: |
+      Test the dotnet-counter plugin with the new input/output configuration format to ensure it works correctly.
+    tags: [test, integration]
+    depends_on: [cli-update-runner, update-dstream-hcl]
+    status: pending
 
   - id: documentation-update
     title: Update documentation for new plugin model

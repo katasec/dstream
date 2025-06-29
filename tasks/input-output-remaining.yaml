@@ -1,0 +1,65 @@
+# Input/Output Stream Abstraction for DStream Plugins
+# Remaining essential tasks
+
+todos:
+  # 1. Update the Task struct to include input/output fields
+  - id: hcl-update-task-struct
+    title: Update Task struct to include input/output fields
+    description: |
+      Modify the TaskBlock struct to include InputBlock and OutputBlock fields.
+    tags: [go, config]
+    file: pkg/config/tasks.go
+    status: completed
+
+  # 2. Add methods to convert InputBlock and OutputBlock to proto structs
+  - id: add-input-output-conversion
+    title: Add methods to convert input/output blocks to proto structs
+    description: |
+      Add methods to TaskBlock to convert InputBlock and OutputBlock to proto.InputConfig and proto.OutputConfig.
+    tags: [go, config]
+    file: pkg/config/structpb.go
+    status: completed
+    
+  # 3. Add method to convert ConfigBlock to structpb.Struct
+  - id: add-config-block-conversion
+    title: Add method to convert ConfigBlock to structpb.Struct
+    description: |
+      Add AsStructPB method to ConfigBlock to convert it to a structpb.Struct.
+    tags: [go, config]
+    file: pkg/config/structpb.go
+    status: completed  # We're using the existing bodyToStructPB function
+
+  # 4. Update executor to use input/output config
+  - id: executor-update
+    title: Update executor to use input/output config
+    description: |
+      Modify the executor to build a StartRequest with input, output, and config fields.
+    tags: [go, executor]
+    file: pkg/executor/executor.go
+    status: completed
+
+  # 5. Update dstream.hcl with new format
+  - id: update-dstream-hcl
+    title: Update dstream.hcl with new input/output format
+    description: |
+      Update the dotnet-counter task in dstream.hcl to use the new input/output configuration format.
+    tags: [hcl, config]
+    file: dstream.hcl
+    status: completed
+
+  # 6. Test the changes
+  - id: dotnet-plugin-test
+    title: Test dotnet-counter plugin with new format
+    description: |
+      Test the dotnet-counter plugin with the new input/output configuration format.
+    tags: [test, integration]
+    status: completed
+    
+  # 7. Implement provider registration
+  - id: implement-provider-registration
+    title: Implement provider registration in dotnet plugin
+    description: |
+      Implement provider registration in the dotnet plugin to handle the "null" input provider and "console" output provider.
+    tags: [csharp, plugin, provider]
+    file: Katasec.DStream.Plugin/ProviderRegistry.cs
+    status: completed

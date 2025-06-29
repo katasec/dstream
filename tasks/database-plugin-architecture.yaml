@@ -1,0 +1,182 @@
+# Database Plugin Architecture Task List
+# This file contains tasks for implementing a C# plugin architecture for database connectors
+
+title: C# Plugin Architecture for Database Connectors
+description: |
+  Tasks for migrating database-specific logic from the DStream CLI to C# plugins,
+  creating a modular architecture for database connectors with a focus on SQL Server
+  and PostgreSQL implementations.
+
+tasks:
+  # Phase 1: Core Architecture and Interfaces
+  - id: create-database-core-package
+    title: Create Katasec.DStream.Plugin.Database Core Package
+    description: |
+      Create the core NuGet package that defines interfaces and base classes for database plugins.
+      This package will serve as the foundation for all database connector implementations.
+    subtasks:
+      - Define IDatabaseConnector interface
+      - Define ICDCProvider interface
+      - Create DatabasePluginBase abstract class
+      - Implement common CDC event models
+      - Add utility classes for connection management
+    tags: [csharp, nuget, architecture]
+    status: pending
+    priority: high
+    
+  - id: create-provider-interfaces
+    title: Define Input/Output Provider Interfaces for Database Operations
+    description: |
+      Create specialized input and output provider interfaces for database operations.
+      These will extend the base IInput and IOutput interfaces with database-specific functionality.
+    subtasks:
+      - Define IDatabaseInput interface extending IInput
+      - Define IDatabaseOutput interface extending IOutput
+      - Create base implementations for common database operations
+    tags: [csharp, interfaces, providers]
+    status: pending
+    priority: high
+    
+  # Phase 2: SQL Server Implementation
+  - id: create-sqlserver-package
+    title: Create Katasec.DStream.Plugin.SqlServer Package
+    description: |
+      Implement SQL Server-specific connector and CDC provider.
+      Port existing Go CDC logic to C# and optimize for .NET features.
+    subtasks:
+      - Implement SqlServerConnector class
+      - Create SqlServerCDCProvider with CDC tracking logic
+      - Implement SqlServerPlugin class
+      - Add SQL Server-specific configuration options
+      - Port CDC table tracking logic from Go to C#
+      - Implement CDC polling mechanism
+    tags: [csharp, sqlserver, cdc]
+    status: pending
+    priority: high
+    
+  - id: sqlserver-input-provider
+    title: Implement SQL Server CDC Input Provider
+    description: |
+      Create an input provider that reads changes from SQL Server CDC tables
+      and converts them to StreamItems.
+    subtasks:
+      - Implement SqlServerCDCInput class
+      - Add CDC table discovery
+      - Implement change tracking logic
+      - Add configuration options for CDC settings
+    tags: [csharp, sqlserver, input-provider]
+    status: pending
+    priority: medium
+    
+  # Phase 3: PostgreSQL Implementation
+  - id: create-postgresql-package
+    title: Create Katasec.DStream.Plugin.PostgreSQL Package
+    description: |
+      Implement PostgreSQL-specific connector and CDC provider using logical replication.
+    subtasks:
+      - Implement PostgreSQLConnector class
+      - Create PostgreSQLCDCProvider with logical replication
+      - Implement PostgreSQLPlugin class
+      - Add PostgreSQL-specific configuration options
+    tags: [csharp, postgresql, cdc]
+    status: pending
+    priority: medium
+    
+  - id: postgresql-input-provider
+    title: Implement PostgreSQL CDC Input Provider
+    description: |
+      Create an input provider that reads changes from PostgreSQL logical replication
+      and converts them to StreamItems.
+    subtasks:
+      - Implement PostgreSQLCDCInput class
+      - Add logical replication setup
+      - Implement change tracking logic
+      - Add configuration options for replication settings
+    tags: [csharp, postgresql, input-provider]
+    status: pending
+    priority: medium
+    
+  # Phase 4: Output Providers
+  - id: implement-output-providers
+    title: Implement Common Output Providers
+    description: |
+      Create reusable output providers for database plugins to use.
+    subtasks:
+      - Implement JsonFileOutput provider
+      - Create DatabaseTableOutput provider
+      - Implement MessageQueueOutput provider
+      - Add configuration options for each provider
+    tags: [csharp, output-providers]
+    status: pending
+    priority: medium
+    
+  # Phase 5: Integration and Testing
+  - id: create-sample-plugins
+    title: Create Sample Database Plugins
+    description: |
+      Implement complete sample plugins for SQL Server and PostgreSQL
+      that demonstrate the full architecture.
+    subtasks:
+      - Create SQL Server CDC sample plugin
+      - Implement PostgreSQL CDC sample plugin
+      - Add sample configurations
+      - Create documentation and examples
+    tags: [csharp, samples, plugins]
+    status: pending
+    priority: medium
+    
+  - id: integration-testing
+    title: Implement Integration Tests
+    description: |
+      Create integration tests for database plugins with Docker containers.
+    subtasks:
+      - Set up Docker containers for SQL Server and PostgreSQL
+      - Create test databases with CDC enabled
+      - Implement integration test suite
+      - Add CI/CD pipeline for testing
+    tags: [testing, integration, docker]
+    status: pending
+    priority: medium
+    
+  # Phase 6: CLI Integration
+  - id: update-cli-for-plugins
+    title: Update DStream CLI for Database Plugins
+    description: |
+      Update the DStream CLI to remove database-specific logic and
+      properly delegate to database plugins.
+    subtasks:
+      - Remove SQL Server-specific code from CLI
+      - Update plugin discovery for database plugins
+      - Add database plugin configuration validation
+      - Update documentation for database plugins
+    tags: [go, cli, refactoring]
+    status: pending
+    priority: high
+    
+  - id: create-migration-guide
+    title: Create Migration Guide
+    description: |
+      Create documentation for migrating from CLI-based database operations
+      to plugin-based architecture.
+    subtasks:
+      - Document configuration changes
+      - Create migration scripts
+      - Add troubleshooting guide
+      - Update examples and tutorials
+    tags: [documentation, migration]
+    status: pending
+    priority: low
+    
+  # Phase 7: Performance and Monitoring
+  - id: add-performance-monitoring
+    title: Add Performance Monitoring to Database Plugins
+    description: |
+      Implement performance monitoring and metrics for database plugins.
+    subtasks:
+      - Add metrics collection
+      - Implement performance logging
+      - Create dashboard templates
+      - Add alerting capabilities
+    tags: [monitoring, performance]
+    status: pending
+    priority: low

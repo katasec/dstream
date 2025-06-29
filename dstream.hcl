@@ -49,15 +49,14 @@ task "dotnet-counter" {
   // Input configuration
   input {
     provider = "null"  // Null input provider as this plugin generates its own data
-    config = {}
+    config {}
   }
   
   // Output configuration
   output {
     provider = "console"  // Console output provider to display counter values
-    config = {
+    config {
       format = "json"  // Output format (json or text)
     }
   }
 }
-

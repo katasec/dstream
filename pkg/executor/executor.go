@@ -108,10 +108,23 @@ func ExecuteTask(task *config.TaskBlock) error {
 	// ── kick off the plugin with graceful shutdown support ──────────────────────────────────────────────
 	//log.Debug("Starting plugin with config:", cfgStruct)
 
-	// Create a StartRequest with the config
+	// Get input config if available
+	inputConfig, err := t.InputAsStructPB()
+	if err != nil {
+		return fmt.Errorf("decode input config: %w", err)
+	}
+
+	// Get output config if available
+	outputConfig, err := t.OutputAsStructPB()
+	if err != nil {
+		return fmt.Errorf("decode output config: %w", err)
+	}
+
+	// Create a StartRequest with the config, input, and output
 	startReq := &pb.StartRequest{
 		Config: cfgStruct,
-		// Input and Output are nil for now - will be populated in future tasks
+		Input:  inputConfig,
+		Output: outputConfig,
 	}
 
 	// Use RunWithGracefulShutdown to handle signals and graceful termination

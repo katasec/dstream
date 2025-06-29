@@ -17,6 +17,18 @@ type TaskBlock struct {
 	PluginPath string       `hcl:"plugin_path,optional"`
 	PluginRef  string       `hcl:"plugin_ref,optional"`
 	Config     *ConfigBlock `hcl:"config,block"`
+	Input      *InputBlock  `hcl:"input,block"`
+	Output     *OutputBlock `hcl:"output,block"`
+}
+
+type InputBlock struct {
+	Provider string       `hcl:"provider,attr"`
+	Config   *ConfigBlock `hcl:"config,block"`
+}
+
+type OutputBlock struct {
+	Provider string       `hcl:"provider,attr"`
+	Config   *ConfigBlock `hcl:"config,block"`
 }
 
 // Wrap the config block body so we can decode it later

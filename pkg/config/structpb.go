@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/katasec/dstream/proto"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -52,4 +53,54 @@ func bodyToStructPB(body hcl.Body) (*structpb.Struct, error) {
 func (t *TaskBlock) ConfigAsStructPB() (*structpb.Struct, error) {
 	log.Info("[ConfigAsStructPB] Converting config block to structpb.Struct")
 	return bodyToStructPB(t.Config.Remain)
+}
+
+// InputAsStructPB converts the input block to a proto.InputConfig
+func (t *TaskBlock) InputAsStructPB() (*proto.InputConfig, error) {
+	if t.Input == nil {
+		return nil, nil
+	}
+	
+	var configStruct *structpb.Struct
+	var err error
+	
+	if t.Input.Config != nil {
+		configStruct, err = bodyToStructPB(t.Input.Config.Remain)
+		if err != nil {
+			return nil, fmt.Errorf("decode input config: %w", err)
+		}
+	} else {
+		// Empty config
+		configStruct = &structpb.Struct{Fields: make(map[string]*structpb.Value)}
+	}
+	
+	return &proto.InputConfig{
+		Provider: t.Input.Provider,
+		Config:   configStruct,
+	}, nil
+}
+
+// OutputAsStructPB converts the output block to a proto.OutputConfig
+func (t *TaskBlock) OutputAsStructPB() (*proto.OutputConfig, error) {
+	if t.Output == nil {
+		return nil, nil
+	}
+	
+	var configStruct *structpb.Struct
+	var err error
+	
+	if t.Output.Config != nil {
+		configStruct, err = bodyToStructPB(t.Output.Config.Remain)
+		if err != nil {
+			return nil, fmt.Errorf("decode output config: %w", err)
+		}
+	} else {
+		// Empty config
+		configStruct = &structpb.Struct{Fields: make(map[string]*structpb.Value)}
+	}
+	
+	return &proto.OutputConfig{
+		Provider: t.Output.Provider,
+		Config:   configStruct,
+	}, nil
 }
