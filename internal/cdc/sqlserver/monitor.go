@@ -97,10 +97,6 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 		}
 		log.Info("Polling changes for table", "table", m.tableName, "lsn", hex.EncodeToString(m.lastLSNs[m.tableName]), "seq", hex.EncodeToString(m.lastSeqs[m.tableName]))
 		changes, newLSN, newSeq, err := m.fetchCDCChanges(m.lastLSNs[m.tableName], m.lastSeqs[m.tableName])
-		m.lsnMutex.Lock()
-		m.lastLSNs[m.tableName] = newLSN
-		m.lastSeqs[m.tableName] = newSeq
-		m.lsnMutex.Unlock()
 
 		if err != nil {
 			log.Info("Error fetching changes", "table", m.tableName, "error", err)
