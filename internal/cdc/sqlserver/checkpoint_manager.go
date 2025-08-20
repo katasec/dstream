@@ -103,6 +103,8 @@ func (c *CheckpointManager) LoadLastLSN() ([]byte, []byte, error) {
 				FROM %s a 
 				JOIN %s b ON a.__$start_lsn = b.last_lsn 
 				WHERE b.table_name = @tableName
+				AND a.__$operation IN (1, 2, 4)
+				ORDER BY a.__$start_lsn, a.__$seqval 
 			`, cdcTable, c.checkpointTable)
 			var seqVal []byte
 			cdcErr := c.dbConn.QueryRow(cdcSeqQuery, sql.Named("tableName", c.tableName)).Scan(&seqVal)

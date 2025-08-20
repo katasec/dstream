@@ -156,7 +156,7 @@ func (bs *BatchSizer) updateBatchSize() error {
 	query := fmt.Sprintf(`
 		SELECT TOP(%d) *
 		FROM cdc.dbo_%s_CT
-		ORDER BY __$start_lsn DESC
+		ORDER BY __$start_lsn DESC, __$seqval DESC
 	`, bs.sampleSize, bs.tableName)
 
 	rows, err := bs.db.Query(query)

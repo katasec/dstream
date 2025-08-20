@@ -165,6 +165,7 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte, lastSeq []
 		FROM cdc.dbo_%s_CT AS ct WITH (NOLOCK)
 		WHERE (ct.__$start_lsn >= @lastLSN
 		   AND ct.__$seqval > @lastSeq)
+		   AND ct.__$operation IN (1, 2, 4)
 		ORDER BY ct.__$start_lsn, ct.__$seqval
 	`, batchSize, columnList, monitor.tableName)
 
