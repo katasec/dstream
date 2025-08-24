@@ -29,7 +29,7 @@ task "dotnet-counter" {
   
   // Global configuration for the plugin
   config {
-    interval = 5000  // Interval in milliseconds between counter increments
+    interval = 1000  // Interval in milliseconds between counter increments
   }
   
   // Input configuration
