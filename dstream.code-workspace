@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../Katasec.DStream.Plugins"
+		},
+		{
+			"path": "../Katasec.DStream.Providers"
 		}
 	],
 	"settings": {}
