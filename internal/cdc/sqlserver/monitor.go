@@ -22,6 +22,7 @@ type SqlServerTableMonitor struct {
 	pollInterval    time.Duration
 	maxPollInterval time.Duration
 	lastLSNs        map[string][]byte
+	lastSeqs        map[string][]byte
 	lsnMutex        sync.Mutex
 	checkpointMgr   *CheckpointManager
 	publisher       cdc.ChangePublisher
@@ -49,6 +50,7 @@ func NewSQLServerTableMonitor(dbConn *sql.DB, tableName string, pollInterval, ma
 		pollInterval:    pollInterval,
 		maxPollInterval: maxPollInterval,
 		lastLSNs:        make(map[string][]byte),
+		lastSeqs:        make(map[string][]byte),
 		checkpointMgr:   checkpointMgr,
 		columnNames:     columns,
 		publisher:       publisher,
@@ -63,15 +65,16 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 		return fmt.Errorf("error initializing checkpoint table: %w", err)
 	}
 
-	// Load last LSN for this table
-	initialLSN, err := m.checkpointMgr.LoadLastLSN()
+	// Load last LSN and last Seq for this table
+	initialLSN, initialSeq, err := m.checkpointMgr.LoadLastLSN()
 	if err != nil {
 		return fmt.Errorf("error loading last LSN for table %s: %w", m.tableName, err)
 	}
-
+	log.Info("Loaded initial LSN and Seq", "table", m.tableName, "lsn", hex.EncodeToString(initialLSN), "seq", hex.EncodeToString(initialSeq))
 	// Multiple goroutines may access lastLSNs map, so lock it
 	m.lsnMutex.Lock()
 	m.lastLSNs[m.tableName] = initialLSN
+	m.lastSeqs[m.tableName] = initialSeq
 	m.lsnMutex.Unlock()
 
 	// Start the batch sizer to calculate optimal batch sizes
@@ -92,8 +95,8 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		log.Info("Polling changes for table", "table", m.tableName, "lsn", hex.EncodeToString(m.lastLSNs[m.tableName]))
-		changes, newLSN, err := m.fetchCDCChanges(m.lastLSNs[m.tableName])
+		log.Info("Polling changes for table", "table", m.tableName, "lsn", hex.EncodeToString(m.lastLSNs[m.tableName]), "seq", hex.EncodeToString(m.lastSeqs[m.tableName]))
+		changes, newLSN, newSeq, err := m.fetchCDCChanges(m.lastLSNs[m.tableName], m.lastSeqs[m.tableName])
 
 		if err != nil {
 			log.Info("Error fetching changes", "table", m.tableName, "error", err)
@@ -124,10 +127,11 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 			// Update last LSN and reset polling interval
 			m.lsnMutex.Lock()
 			m.lastLSNs[m.tableName] = newLSN
+			m.lastSeqs[m.tableName] = newSeq
 			m.lsnMutex.Unlock()
 
 			// Update the checkpoint in the database
-			if err := m.checkpointMgr.SaveLastLSN(newLSN); err != nil {
+			if err := m.checkpointMgr.SaveLastLSN(newLSN, newSeq); err != nil {
 				log.Error("Failed to save checkpoint", "error", err)
 			}
 
@@ -144,60 +148,84 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 }
 
 // fetchCDCChanges queries CDC changes and returns relevant events as a slice of maps
-func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[string]interface{}, []byte, error) {
-	log.Info("Polling changes", "table", monitor.tableName, "lsn", hex.EncodeToString(lastLSN))
+func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte, lastSeq []byte) ([]map[string]interface{}, []byte, []byte, error) {
+	log.Info("Polling changes", "table", monitor.tableName, "lsn", hex.EncodeToString(lastLSN), "seq", hex.EncodeToString(lastSeq))
 
 	// Get the optimal batch size from BatchSizer
 	batchSize := monitor.batchSizer.GetBatchSize()
-	//log.Info("Using batch size", "table", monitor.tableName, "batchSize", batchSize)
 
 	// Use cached column names
-	columnList := "ct.__$start_lsn, ct.__$operation"
+	columnList := "ct.__$start_lsn, ct.__$seqval, ct.__$operation"
 	if len(monitor.columnNames) > 0 {
 		columnList += ", " + strings.Join(monitor.columnNames, ", ")
 	}
 
 	query := fmt.Sprintf(`
-        SELECT TOP(%d) %s
-        FROM cdc.dbo_%s_CT AS ct
-        WHERE ct.__$start_lsn > @lastLSN
-        ORDER BY ct.__$start_lsn
-    `, batchSize, columnList, monitor.tableName)
+		SELECT TOP(%d) %s
+		FROM cdc.dbo_%s_CT AS ct WITH (NOLOCK)
+		WHERE (ct.__$start_lsn >= @lastLSN
+		   AND ct.__$seqval > @lastSeq)
+		   AND ct.__$operation IN (1, 2, 4)
+		ORDER BY ct.__$start_lsn, ct.__$seqval
+	`, batchSize, columnList, monitor.tableName)
 
 	log.Debug(query)
-	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN))
-	log.Debug("Query executed", "query", query, "lastLSN", hex.EncodeToString(lastLSN))
+	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN), sql.Named("lastSeq", lastSeq))
+	log.Debug("Query executed", "query", query, "lastLSN", hex.EncodeToString(lastLSN), "lastSeq", hex.EncodeToString(lastSeq))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
+		return nil, nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
 	}
 	defer rows.Close()
 
 	changes := []map[string]interface{}{}
 	var latestLSN []byte
+	var latestSeq []byte
 
 	for rows.Next() {
+		var lsn []byte
+		var seq []byte
+		var operation int
 
 		// Prepare a slice of pointers for the columns
-		columnData, lsn, operation := monitor.prepareScanTargets()
+		columnData := make([]any, len(monitor.columnNames)+3)
+		columnData[0] = &lsn
+		columnData[1] = &seq
+		columnData[2] = &operation
+
+		// Prepare a slice of sql.NullString for the rest of the columns
+		columnValues := make([]sql.NullString, len(monitor.columnNames))
+		for i := range monitor.columnNames {
+			columnData[i+3] = &columnValues[i]
+		}
 
 		// Scan the row into the columnData slice
 		if err := rows.Scan(columnData...); err != nil {
-			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
 		// Determine the operation type as a string
-		operationType, ok := getOperationType(operation)
+		operationType, ok := getOperationType(&operation)
 		if !ok {
 			continue // Unknown operation, skip it
 		}
 
 		// Organize metadata and data separately in the output
-		data := extractColumnData(monitor.columnNames, columnData)
+		data := make(map[string]any, len(monitor.columnNames))
+		for i, name := range monitor.columnNames {
+			raw := columnData[i+3]
+			columnValue, ok := raw.(*sql.NullString)
+			if ok && columnValue.Valid {
+				data[name] = columnValue.String
+			} else {
+				data[name] = nil
+			}
+		}
 
 		change := map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"TableName":     monitor.tableName,
-				"LSN":           hex.EncodeToString(*lsn),
+				"LSN":           hex.EncodeToString(lsn),
+				"Seq":           hex.EncodeToString(seq),
 				"OperationID":   operation,
 				"OperationType": operationType,
 			},
@@ -205,13 +233,12 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte) ([]map[str
 		}
 
 		changes = append(changes, change)
-		latestLSN = *lsn
+		latestLSN = lsn
+		latestSeq = seq
 	}
 
-	// Return the changes and latest LSN without saving the checkpoint yet
-	// The checkpoint will be saved in MonitorTable after successful publishing
-
-	return changes, latestLSN, nil
+	// Return the changes and latest LSN/Seq without saving the checkpoint yet
+	return changes, latestLSN, latestSeq, nil
 }
 
 // fetchColumnNames fetches column names for a specified table
@@ -271,7 +298,7 @@ func getOperationType(op *int) (string, bool) {
 	switch *op {
 	case 2:
 		return "Insert", true
-	case 4:
+	case 3, 4:
 		return "Update", true
 	case 1:
 		return "Delete", true
