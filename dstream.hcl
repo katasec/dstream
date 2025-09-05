@@ -25,7 +25,9 @@
 
 task "dotnet-counter" {
   type = "plugin"
-  plugin_path = "../dstream-dotnet-test/out/dstream-dotnet-test"
+  # plugin_path = "../dstream-dotnet-test/out/dstream-dotnet-test"
+  plugin_path = "../dstream-dotnet-sdk/src/dstream-dotnet-test/out/dstream-dotnet-test"
+   
   
   // Global configuration for the plugin
   config {
