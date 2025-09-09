@@ -25,19 +25,20 @@
 
 task "dotnet-counter" {
   type = "plugin"
-  # plugin_path = "../dstream-dotnet-test/out/dstream-dotnet-test"
-  plugin_path = "../dstream-dotnet-sdk/src/dstream-dotnet-test/out/dstream-dotnet-test"
+  plugin_path = "../dstream-dotnet-sdk/samples/dstream-dotnet-test/out/dstream-dotnet-test"
    
   
   // Global configuration for the plugin
   config {
-    interval = 1000  // Interval in milliseconds between counter increments
+    interval = 500  // Interval in milliseconds between counter increments
   }
   
   // Input configuration
   input {
     provider = "null"  // Null input provider as this plugin generates its own data
-    config {}
+    config {
+      interval = 1000
+    }
   }
   
   // Output configuration
