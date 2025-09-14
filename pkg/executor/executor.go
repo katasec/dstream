@@ -16,8 +16,23 @@ import (
 	sdkLogging "github.com/katasec/dstream/sdk/logging"
 )
 
-// ExecuteTask looks up a task in dstream.hcl and runs its plugin via gRPC.
+// ExecuteTask looks up a task in dstream.hcl and runs its plugin via gRPC or orchestrates providers.
 func ExecuteTask(task *config.TaskBlock) error {
+	// Route based on task type
+	switch task.Type {
+	case "providers":
+		// New independent provider orchestration
+		return ExecuteProviderTask(task)
+	case "plugin", "":
+		// Legacy single plugin execution (default for backward compatibility)
+		return executePluginTask(task)
+	default:
+		return fmt.Errorf("unsupported task type: %s", task.Type)
+	}
+}
+
+// executePluginTask handles the legacy single plugin execution model
+func executePluginTask(task *config.TaskBlock) error {
 
 	// if jsonCfg, err := task.DumpConfigAsJSON(); err != nil {
 	// 	log.Error("Failed to dump config as JSON.", "Error:", err.Error())

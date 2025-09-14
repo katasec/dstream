@@ -1,59 +1,84 @@
 
 # DStream
 
-**DStream** is a robust, stateless Change Data Capture (CDC) streaming solution designed to capture changes from Microsoft SQL Server and reliably deliver them to downstream systems through Azure Service Bus or any other message queue provider. Its purpose is simple: **collect and forward** streaming data (currently CDC, but extensible to APIs, webhooks, or other streams) to any downstream system.
+**DStream** is a universal data streaming orchestration CLI that connects independent input and output providers using stdin/stdout communication. It supports both legacy Change Data Capture (CDC) workflows and modern provider-based architectures for streaming data from any source to any destination.
 
 ---
 
-## Design Philosophy
+## Architecture Evolution
 
-### ✅ Stateless by Design
-- No in-memory workflows.
-- No complex orchestration.
-- No recovery logic inside the service.
-- State (offsets, LSNs, messages) is stored **externally** (in SQL or the queue).
-- Crash-safe: restart, reschedule, or scale out with zero warmup or coordination.
+### 🔄 Two Execution Models
 
-### ✅ Durability & Reliability Offloaded
-- dstream **offloads durability, retries, and ordering** to external queue systems (Azure Service Bus, AWS SQS, Kafka).
-- Exactly-once guarantees at the batch level via atomic offset commits **after successful sends**.
+**1. Legacy Plugin Mode (`type = "plugin"`):**
+- Single .NET plugin binary communicating via gRPC
+- HashiCorp go-plugin protocol
+- Backward compatibility maintained
 
-### ✅ Simplicity = Resilience
-- Reduces fault scenarios.
-- Eliminates workflow recovery issues.
-- Cuts operational overhead.
-- Easier to debug and operate.
+**2. Modern Provider Mode (`type = "providers"`):**
+- Independent input and output provider binaries
+- Unix stdin/stdout communication
+- Language-agnostic ecosystem
+- Composable, testable, debuggable
 
-### ✅ Portability
-- Works across any cloud, queue system, source (SQL CDC, APIs, webhooks), and destination (queues, services).
+### ✅ Unix Pipeline Philosophy
+- **Simple I/O**: JSON over stdin/stdout pipes
+- **Process Isolation**: Each provider runs independently
+- **Universal Compatibility**: Works with any programming language
+- **Easy Testing**: Test providers directly with shell commands
+- **Operational Simplicity**: Standard Unix tooling and patterns
 
-> The message queue is the orchestrator. The checkpoint is the resume point. The consumer defines the final behavior.
+### ✅ Provider Independence
+- **Standalone Binaries**: Each provider is a self-contained executable
+- **Zero Dependencies**: No shared state or coordination required
+- **Easy Development**: Focus on business logic, CLI handles orchestration
+- **Fault Isolation**: Provider failures don't affect others
+
+> **Modern DStream**: Think "Unix pipeline for data" - simple, composable, battle-tested.
 
 
 
-## Architecture
+## Modern Architecture: Provider Orchestration
 
-DStream operates in two main stages:
+### Data Flow
 
-1. **Ingestion Stage (Ingester)**:
-   - Monitors SQL Server tables enabled with CDC
-   - Captures changes (inserts, updates, deletes)
-   - Publishes changes to a central ingest queue
-   - Updates CDC offsets only after successful queue publish
-   - Uses distributed locking for high availability
+```
+[Input Provider] --stdin/stdout--> [DStream CLI] --stdin/stdout--> [Output Provider]
+```
 
-2. **Routing Stage (Router)**:
-   - Consumes messages from the ingest queue
-   - Routes messages to their destination topics
-   - Pre-creates publishers at startup for optimal performance
-   - Ensures reliable delivery to downstream systems
+DStream CLI orchestrates independent provider processes:
 
-This architecture provides several benefits:
-- Reliable capture and delivery of changes
-- Proper sequencing of messages
-- High availability through distributed locking
-- Optimized performance with connection pooling
-- Clear separation of concerns between ingestion and routing
+1. **Launches Input Provider**:
+   - Sends JSON configuration via stdin
+   - Reads JSON data envelopes from stdout
+   - Handles process lifecycle and errors
+
+2. **Launches Output Provider**:
+   - Sends JSON configuration via stdin
+   - Forwards data envelopes via stdin
+   - Monitors process health and completion
+
+3. **Data Pumping**:
+   - Pipes data from input provider stdout to output provider stdin
+   - Maintains data flow integrity with error handling
+   - Supports graceful shutdown with SIGTERM signals
+
+### Provider Communication Protocol
+
+**Configuration** (first line via stdin):
+```json
+{"interval": 1000, "max_count": 10}
+```
+
+**Data Envelopes** (subsequent lines via stdout/stdin):
+```json
+{"data": {"value": 42}, "metadata": {"seq": 1, "source": "counter"}}
+```
+
+**Logging** (stderr for debugging):
+```
+[CounterInputProvider] Starting service...
+[ConsoleOutputProvider] Processed 1 messages
+```
 
 ## Key Features
 
@@ -76,13 +101,6 @@ This architecture provides several benefits:
 - **High Availability**: Supports running multiple instances for redundancy
 - **Message Metadata**: Includes rich metadata for proper message routing and tracking
 
-## Requirements
-
-- **MS SQL Server** with CDC enabled on target tables
-- **Azure Service Bus** for message streaming
-- **Azure Blob Storage** for distributed locking
-- **Go** (latest version recommended)
-
 ## Installation
 
 1. **Clone the repository**:
@@ -96,242 +114,314 @@ This architecture provides several benefits:
    go mod tidy
    ```
 
-3. **Configure environment variables**:
+3. **Build the CLI**:
    ```bash
-   export DSTREAM_DB_CONNECTION_STRING="sqlserver://user:pass@localhost:1433?database=TestDB"
-   export DSTREAM_INGEST_CONNECTION_STRING="your-azure-service-bus-connection-string"
-   export DSTREAM_BLOB_CONNECTION_STRING="your-azure-blob-storage-connection-string"
-   export DSTREAM_PUBLISHER_CONNECTION_STRING="your-azure-service-bus-connection-string"
-   export DSTREAM_LOG_LEVEL="debug"  # Optional, defaults to info
+   go build -o dstream
+   ```
+
+4. **Create your task configuration** (`dstream.hcl`):
+   ```hcl
+   task "my-pipeline" {
+     type = "providers"
+     
+     input {
+       provider_path = "./my-input-provider"
+       config {
+         # Input provider configuration
+       }
+     }
+     
+     output {
+       provider_path = "./my-output-provider"
+       config {
+         # Output provider configuration
+       }
+     }
+   }
    ```
 
 ## Configuration
 
-DStream uses HCL for configuration. Here's an example `dstream.hcl`:
+DStream uses HCL for task configuration. Here's an example `dstream.hcl`:
+
+### Modern Provider Tasks
 
 ```hcl
-ingester {
-    db_type = "sqlserver"
-    db_connection_string = "{{ env \"DSTREAM_DB_CONNECTION_STRING\" }}"
-
-    poll_interval_defaults {
-        poll_interval = "5s"
-        max_poll_interval = "2m"
+# Independent provider orchestration (recommended)
+task "counter-to-console" {
+  type = "providers"  # New provider orchestration mode
+  
+  input {
+    provider_path = "../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider"
+    config {
+      interval = 1000   # Generate counter every 1 second
+      max_count = 50    # Stop after 50 iterations
     }
-
-    queue {
-        type = "servicebus"
-        name = "ingest-queue"
-        connection_string = "{{ env \"DSTREAM_INGEST_CONNECTION_STRING\" }}"
+  }
+  
+  output {
+    provider_path = "../dstream-console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider"
+    config {
+      outputFormat = "simple"  # Use simple output format
     }
-
-    locks {
-        type = "azure_blob"
-        connection_string = "{{ env \"DSTREAM_BLOB_CONNECTION_STRING\" }}"
-        container_name = "locks"
-    }
-
-    tables = ["Persons"]
-
-    tables_overrides {
-        overrides {
-            table_name = "Persons"
-            poll_interval = "5s"
-            max_poll_interval = "10m"
-        }
-    }
+  }
 }
 
-publisher {
-    source {
-        type = "azure_service_bus"
-        connection_string = "{{ env \"DSTREAM_PUBLISHER_CONNECTION_STRING\" }}"
+# Future: OCI container image providers
+task "production-pipeline" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/katasec/mssql-cdc-provider:v1.0.0"
+    config {
+      connection_string = "{{ env \"DATABASE_CONNECTION_STRING\" }}"
+      tables = ["Orders", "Customers"]
     }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/katasec/azure-servicebus-provider:v1.0.0"
+    config {
+      connection_string = "{{ env \"MESSAGING_CONNECTION_STRING\" }}"
+      queue_name = "data-events"
+    }
+  }
+}
+```
 
-    output {
-        type = "azure_service_bus"
-        connection_string = "{{ env \"DSTREAM_PUBLISHER_CONNECTION_STRING\" }}"
+### Legacy Plugin Tasks
+
+```hcl
+# Legacy single plugin mode (backward compatibility)
+task "dotnet-counter-plugin" {
+  type = "plugin"
+  plugin_path = "../dstream-dotnet-sdk/samples/dstream-dotnet-test/out/dstream-dotnet-test"
+   
+  config {
+    interval = 500  # Plugin-level configuration
+  }
+  
+  input {
+    provider = "null"
+    config {
+      interval = 1000
     }
+  }
+  
+  output {
+    provider = "console"
+    config {
+      format = "json"
+    }
+  }
 }
 ```
 
 ## Usage
 
-### Starting the Ingester
-
-The ingester captures changes from SQL Server and publishes them to the ingest queue:
+### Running Provider Tasks (Modern)
 
 ```bash
-# Start with debug logging
-go run . ingester --log-level debug
+# Run a provider orchestration task
+go run . run counter-to-console
 
-# Start with info logging (default)
-go run . ingester
+# With debug logging
+go run . run counter-to-console --log-level debug
 ```
 
-The ingester will:
-1. Create topics for each monitored table
-2. Create a 'sub1' subscription for each topic
-3. Begin monitoring tables for changes
-4. Publish changes to the ingest queue
-5. Update CDC offsets after successful publish
+The CLI will:
+1. Parse the task configuration from `dstream.hcl`
+2. Launch input and output provider processes
+3. Send JSON configuration to each provider via stdin
+4. Pipe data from input provider stdout to output provider stdin
+5. Handle graceful shutdown and error recovery
 
-### Starting the Router
-
-The router consumes messages from the ingest queue and routes them to destination topics:
+### Running Plugin Tasks (Legacy)
 
 ```bash
-# Start with debug logging
-go run . router --log-level debug
+# Run a legacy plugin task
+go run . run dotnet-counter-plugin
 
-# Start with info logging (default)
-go run . router
+# With debug logging for troubleshooting
+go run . run dotnet-counter-plugin --log-level debug
 ```
 
-The router will:
-1. Pre-create publishers for all configured tables
-2. Begin consuming messages from the ingest queue
-3. Route messages to their destination topics
-4. Ensure reliable delivery with proper sequencing
-
-## Message Format
-
-DStream uses a consistent message format throughout the pipeline:
-
-```json
-{
-    "data": {
-        "FirstName": "Diana",
-        "ID": "180",
-        "LastName": "Williams"
-    },
-    "metadata": {
-        "Destination": "server.database.table.events",
-        "IngestQueue": "ingest-queue",
-        "LSN": "0000003600000b200003",
-        "OperationID": 2,
-        "OperationType": "Insert",
-        "TableName": "Persons"
-    }
-}
-```
-
-### Message Fields
-
-#### Data Section
-- Contains the actual change data
-- Includes all columns from the monitored table
-- Values are preserved in their original types
-
-#### Metadata Section
-- `Destination`: Fully qualified destination topic name
-- `IngestQueue`: Name of the central ingest queue
-- `LSN`: Log Sequence Number from SQL Server CDC
-- `OperationID`: Type of change (1=delete, 2=insert, 3=update before, 4=update after)
-- `OperationType`: Human-readable operation type
-- `TableName`: Source table name
-
-### Running in Production
-
-For production deployments:
+### Task Management
 
 ```bash
-go run . server --log-level info
+# List all available tasks
+go run . list
+
+# Show task configuration (planned)
+go run . show counter-to-console
+
+# Validate configuration
+go run . validate
 ```
 
-## Architecture
+## Data Envelope Format
 
-DStream follows a modular architecture with clear separation of concerns:
+DStream uses a standard JSON envelope format for provider communication:
 
-### Components
-
-1. **CDC Monitor**
-   - Monitors SQL Server tables for changes using CDC
-   - Uses adaptive polling with configurable intervals
-   - Tracks changes using LSN (Log Sequence Numbers)
-
-2. **Publisher Adapter**
-   - Wraps publishers with additional metadata
-   - Adds destination routing information
-   - Provides a unified interface for all publishers
-
-3. **Publishers**
-   - Pluggable components that handle message delivery
-   - Implementations available for:
-     - Azure Service Bus
-     - Azure Event Hubs
-     - Console (for debugging)
-   - Easy to add new implementations via the Publisher interface
-
-### Data Flow
-```
-[SQL Server] --> [CDC Monitor] --> [Publisher Adapter] --> [Publisher] --> [Destination]
-    |              |                    |                    |
-    |              |                    |                    |- Service Bus
-    |              |                    |                    |- Event Hubs
-    |              |                    |                    |- Console
-    |              |                    |
-    |              |                    |- Add Metadata
-    |              |                    |- Route Information
-    |              |
-    |              |- Track LSN
-    |              |- Adaptive Polling
-    |
-    |- CDC Enabled Tables
-```
-
-### Design Principles
-
-1. **Modularity**
-   - Clear separation between components
-   - Pluggable publishers for different destinations
-   - Easy to extend and maintain
-
-2. **Reliability**
-   - Distributed locking for multiple instances
-   - Message queuing for reliable delivery
-   - Graceful shutdown handling
-
-3. **Observability**
-   - Structured logging throughout
-   - Configurable log levels
-   - Clear error reporting
-
-4. **Configuration**
-   - HCL-based configuration
-   - Environment variable support
-   - Per-table configuration options
-
-### Message Format
-
-DStream publishes changes in a standardized JSON format:
-
+### Counter Example
 ```json
 {
   "data": {
-    "Field1": "Value1",
-    "Field2": "Value2"
+    "value": 42,
+    "timestamp": "2025-09-14T17:11:21.5590040+00:00"
   },
   "metadata": {
-    "Destination": "topic-or-queue-name",
-    "LSN": "00000034000025c80003",
-    "OperationID": 2,
-    "OperationType": "Insert|Update|Delete",
-    "TableName": "TableName"
+    "seq": 42,
+    "interval_ms": 1000,
+    "provider": "counter-input-provider"
   }
 }
 ```
 
-The metadata includes:
-- Destination for routing
-- LSN for tracking
-- Operation type (Insert=2, Update=4, Delete=1)
-- Source table name
+### CDC Example (Future)
+```json
+{
+  "data": {
+    "FirstName": "Diana",
+    "ID": "180",
+    "LastName": "Williams"
+  },
+  "metadata": {
+    "table": "Persons",
+    "operation": "Insert",
+    "lsn": "0000003600000b200003",
+    "timestamp": "2025-09-14T10:30:45Z"
+  }
+}
+```
 
+### Envelope Structure
+
+- **`data`**: The actual payload (business data)
+- **`metadata`**: Provider-specific metadata for tracking, routing, and debugging
+- **Format**: One JSON envelope per line (JSON Lines format)
+- **Encoding**: UTF-8 text over stdin/stdout
+
+## Requirements
+
+### For Provider Tasks
+- **Go** (latest version) for the DStream CLI
+- **Provider binaries** (any language that supports stdin/stdout)
+- **HCL configuration** file (`dstream.hcl`)
+
+### For Legacy Plugin Tasks
+- **Go** (latest version) for the DStream CLI
+- **.NET plugin binaries** with gRPC support
+- **HCL configuration** file (`dstream.hcl`)
+
+### Example Providers
+- [Counter Input Provider (.NET)](https://github.com/katasec/dstream-counter-input-provider)
+- [Console Output Provider (.NET)](https://github.com/katasec/dstream-console-output-provider)
+- [DStream .NET SDK](https://github.com/katasec/dstream-dotnet-sdk)
+
+## Provider Ecosystem
+
+### Available Providers
+
+**Input Providers:**
+- [Counter Input Provider](https://github.com/katasec/dstream-counter-input-provider) - Generate test counter data
+- SQL Server CDC Provider (planned) - SQL Server Change Data Capture
+- PostgreSQL CDC Provider (planned) - PostgreSQL replication
+- REST API Provider (planned) - Poll REST endpoints
+
+**Output Providers:**
+- [Console Output Provider](https://github.com/katasec/dstream-console-output-provider) - Display data to console
+- Azure Service Bus Provider (planned) - Send to Azure Service Bus
+- Kafka Provider (planned) - Send to Apache Kafka
+- Database Provider (planned) - Insert to databases
+
+### Creating Providers
+
+Providers can be written in **any language** that supports stdin/stdout:
+
+**Key Requirements:**
+1. Read JSON configuration from stdin (first line)
+2. For input providers: Write JSON envelopes to stdout
+3. For output providers: Read JSON envelopes from stdin
+4. Write logs/status to stderr
+5. Handle graceful shutdown (SIGTERM)
+
+**Example Provider Languages:**
+- .NET (using [DStream .NET SDK](https://github.com/katasec/dstream-dotnet-sdk))
+- Python, Node.js, Rust, Java, etc. (direct stdin/stdout handling)
+
+### Provider Distribution
+
+**Current:** Local binaries via `provider_path`
+**Future:** OCI container images via `provider_ref`
+
+```hcl
+# Local development
+input {
+  provider_path = "./my-provider"
+}
+
+# Production deployment (planned)
+input {
+  provider_ref = "ghcr.io/myorg/my-provider:v1.0.0"
+}
+```
+
+
+## Getting Started
+
+### Quick Example
+
+1. **Get the example providers**:
+   ```bash
+   # Clone and build counter input provider
+   git clone https://github.com/katasec/dstream-counter-input-provider
+   cd dstream-counter-input-provider
+   /usr/local/share/dotnet/dotnet publish -c Release
+   
+   # Clone and build console output provider  
+   git clone https://github.com/katasec/dstream-console-output-provider
+   cd dstream-console-output-provider
+   /usr/local/share/dotnet/dotnet publish -c Release
+   ```
+
+2. **Create `dstream.hcl`**:
+   ```hcl
+   task "demo" {
+     type = "providers"
+     
+     input {
+       provider_path = "../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider"
+       config {
+         interval = 1000
+         max_count = 5
+       }
+     }
+     
+     output {
+       provider_path = "../dstream-console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider"
+       config {
+         outputFormat = "simple"
+       }
+     }
+   }
+   ```
+
+3. **Run the pipeline**:
+   ```bash
+   go run . run demo
+   ```
 
 ## Contributing
 
-Contributions are welcome! Please submit a pull request or create an issue if you encounter bugs or have suggestions for new features.
+Contributions are welcome! This includes:
+
+- **New Providers**: Create providers in any language
+- **CLI Improvements**: Enhance the orchestration engine
+- **Documentation**: Help others understand the ecosystem
+- **Bug Reports**: Issues and suggestions
+
+Please submit pull requests or create issues for discussions.
 
 ## License
 
@@ -339,31 +429,8 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ---
 
-## Enhanced Features Summary
+## Vision
 
-### ✅ Reliable Offset Management
-- **CheckpointManager** tracks LSN offsets.
-- Only commits after successful batch publishing to ensure **exactly-once delivery**.
+> **DStream is "Unix pipelines for data streaming"** - simple, composable, language-agnostic, and battle-tested. 
 
-### ✅ Adaptive Polling
-- Uses **BackOffManager** for dynamic backoff based on activity and errors.
-
-### ✅ BatchSizer
-- Dynamically optimizes batch sizes considering message size limits and table characteristics.
-
-### ✅ Distributed Locking
-- Ensures single active table monitoring across instances.
-
-### ✅ HCL Configuration
-- Simple, declarative config via `dstream.hcl`.
-
-### ✅ Plugin-Ready Architecture
-- **TableMonitor** and planned **Publisher** interfaces make sources and sinks swappable.
-
-### ✅ Extensible Support
-- Ready for future sources (Postgres, APIs) and destinations (Kafka, Event Hub).
-
----
-
-## The Goal
-> Keep dstream lean, focused, and stateless—so it’s reliable, resilient, and boring (in the best way).
+We believe data streaming should be as easy as `cat file.txt | grep "error" | wc -l` but for real-time data pipelines.

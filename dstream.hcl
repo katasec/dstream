@@ -23,11 +23,11 @@
 #   }
 # }
 
-task "dotnet-counter" {
+# Legacy single plugin task (keep for compatibility)
+task "dotnet-counter-plugin" {
   type = "plugin"
   plugin_path = "../dstream-dotnet-sdk/samples/dstream-dotnet-test/out/dstream-dotnet-test"
    
-  
   // Global configuration for the plugin
   config {
     interval = 500  // Interval in milliseconds between counter increments
@@ -46,6 +46,26 @@ task "dotnet-counter" {
     provider = "console"  // Console output provider to display counter values
     config {
       format = "json"  // Output format (json or text)
+    }
+  }
+}
+
+# New independent provider task
+task "counter-to-console" {
+  type = "providers"  # New type for independent provider orchestration
+  
+  input {
+    provider_path = "../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider"
+    config {
+      interval = 1000   # Generate counter every 1 second
+      max_count = 50    # Stop after 50 iterations
+    }
+  }
+  
+  output {
+    provider_path = "../dstream-console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider"
+    config {
+      outputFormat = "structured"  # Use structured output format
     }
   }
 }

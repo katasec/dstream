@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -22,13 +23,17 @@ type TaskBlock struct {
 }
 
 type InputBlock struct {
-	Provider string       `hcl:"provider,attr"`
-	Config   *ConfigBlock `hcl:"config,block"`
+	Provider     string       `hcl:"provider,optional"`
+	ProviderPath string       `hcl:"provider_path,optional"`
+	ProviderRef  string       `hcl:"provider_ref,optional"`
+	Config       *ConfigBlock `hcl:"config,block"`
 }
 
 type OutputBlock struct {
-	Provider string       `hcl:"provider,attr"`
-	Config   *ConfigBlock `hcl:"config,block"`
+	Provider     string       `hcl:"provider,optional"`
+	ProviderPath string       `hcl:"provider_path,optional"`
+	ProviderRef  string       `hcl:"provider_ref,optional"`
+	Config       *ConfigBlock `hcl:"config,block"`
 }
 
 // Wrap the config block body so we can decode it later
@@ -100,6 +105,44 @@ func decodeAttributes(attrs hcl.Attributes) (map[string]string, map[string]strin
 	}
 
 	return vals, types, nil
+}
+
+// InputConfigAsJSON serializes the input config block as JSON with proper types
+func (t *TaskBlock) InputConfigAsJSON() (string, error) {
+	if t.Input == nil || t.Input.Config == nil {
+		return "{}", nil
+	}
+	
+	attrs, diags := t.Input.Config.Remain.JustAttributes()
+	if diags.HasErrors() {
+		return "", fmt.Errorf("input config decode error: %s", diags.Error())
+	}
+	
+	config, err := attributesToJSON(attrs)
+	if err != nil {
+		return "", fmt.Errorf("input config serialization error: %w", err)
+	}
+	
+	return config, nil
+}
+
+// OutputConfigAsJSON serializes the output config block as JSON with proper types
+func (t *TaskBlock) OutputConfigAsJSON() (string, error) {
+	if t.Output == nil || t.Output.Config == nil {
+		return "{}", nil
+	}
+	
+	attrs, diags := t.Output.Config.Remain.JustAttributes()
+	if diags.HasErrors() {
+		return "", fmt.Errorf("output config decode error: %s", diags.Error())
+	}
+	
+	config, err := attributesToJSON(attrs)
+	if err != nil {
+		return "", fmt.Errorf("output config serialization error: %w", err)
+	}
+	
+	return config, nil
 }
 
 // decodeCtyValue takes a cty.Value and returns:
@@ -177,6 +220,87 @@ func joinStrings(vs []cty.Value) string {
 		out[i] = v.AsString()
 	}
 	return strings.Join(out, ",")
+}
+
+// attributesToJSON converts HCL attributes to JSON while preserving proper types
+func attributesToJSON(attrs hcl.Attributes) (string, error) {
+	config := make(map[string]interface{})
+	
+	for name, attr := range attrs {
+		val, diags := attr.Expr.Value(nil)
+		if diags.HasErrors() {
+			return "", fmt.Errorf("value error for %s: %s", name, diags.Error())
+		}
+		
+		// Convert cty.Value to proper Go type for JSON
+		goVal, err := ctyValueToGo(val)
+		if err != nil {
+			return "", fmt.Errorf("convert %s: %w", name, err)
+		}
+		
+		config[name] = goVal
+	}
+	
+	jsonBytes, err := json.Marshal(config)
+	if err != nil {
+		return "", fmt.Errorf("JSON marshal error: %w", err)
+	}
+	
+	return string(jsonBytes), nil
+}
+
+// ctyValueToGo converts a cty.Value to appropriate Go type for JSON serialization
+func ctyValueToGo(val cty.Value) (interface{}, error) {
+	valType := val.Type()
+	
+	switch {
+	case valType.Equals(cty.String):
+		return val.AsString(), nil
+		
+	case valType.Equals(cty.Number):
+		// Try to convert to int first, then float
+		bf := val.AsBigFloat()
+		if bf.IsInt() {
+			if intVal, accuracy := bf.Int64(); accuracy == big.Exact {
+				return int(intVal), nil
+			}
+		}
+		// Fallback to float64
+		if floatVal, accuracy := bf.Float64(); accuracy == big.Exact {
+			return floatVal, nil
+		}
+		return bf.String(), nil // Fallback to string for very large numbers
+		
+	case valType.Equals(cty.Bool):
+		return val.True(), nil
+		
+	case valType.IsListType() || valType.IsTupleType():
+		slice := val.AsValueSlice()
+		result := make([]interface{}, len(slice))
+		for i, item := range slice {
+			goVal, err := ctyValueToGo(item)
+			if err != nil {
+				return nil, fmt.Errorf("convert list item %d: %w", i, err)
+			}
+			result[i] = goVal
+		}
+		return result, nil
+		
+	case valType.IsMapType() || valType.IsObjectType():
+		valMap := val.AsValueMap()
+		result := make(map[string]interface{})
+		for k, v := range valMap {
+			goVal, err := ctyValueToGo(v)
+			if err != nil {
+				return nil, fmt.Errorf("convert map key %s: %w", k, err)
+			}
+			result[k] = goVal
+		}
+		return result, nil
+		
+	default:
+		return val.GoString(), nil
+	}
 }
 
 // isTupleOfStrings returns true if all elements in the tuple are strings.
