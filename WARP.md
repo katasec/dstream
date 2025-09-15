@@ -1,5 +1,7 @@
 # WARP.md
 
+> **💡 Starting a new Warp session?** See `WARP_CONTEXT_RESTORE.md` for copy-paste prompts to quickly restore full project context and continue development without losing time.
+
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
 ## Development Commands
