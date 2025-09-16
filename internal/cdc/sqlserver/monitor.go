@@ -169,9 +169,9 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte, lastSeq []
 		ORDER BY ct.__$start_lsn, ct.__$seqval
 	`, batchSize, columnList, monitor.tableName)
 
-	log.Debug(query)
+	//log.Debug(query)
 	rows, err := monitor.dbConn.Query(query, sql.Named("lastLSN", lastLSN), sql.Named("lastSeq", lastSeq))
-	log.Debug("Query executed", "query", query, "lastLSN", hex.EncodeToString(lastLSN), "lastSeq", hex.EncodeToString(lastSeq))
+	log.Debug("Query executed", "query", "table", monitor.tableName, query, "lastLSN", hex.EncodeToString(lastLSN), "lastSeq", hex.EncodeToString(lastSeq))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to query CDC table for %s: %w", monitor.tableName, err)
 	}
@@ -182,21 +182,8 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte, lastSeq []
 	var latestSeq []byte
 
 	for rows.Next() {
-		var lsn []byte
-		var seq []byte
-		var operation int
-
 		// Prepare a slice of pointers for the columns
-		columnData := make([]any, len(monitor.columnNames)+3)
-		columnData[0] = &lsn
-		columnData[1] = &seq
-		columnData[2] = &operation
-
-		// Prepare a slice of sql.NullString for the rest of the columns
-		columnValues := make([]sql.NullString, len(monitor.columnNames))
-		for i := range monitor.columnNames {
-			columnData[i+3] = &columnValues[i]
-		}
+		columnData, lsn, seq, operation := monitor.prepareScanTargets()
 
 		// Scan the row into the columnData slice
 		if err := rows.Scan(columnData...); err != nil {
@@ -204,37 +191,32 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte, lastSeq []
 		}
 
 		// Determine the operation type as a string
-		operationType, ok := getOperationType(&operation)
+		operationType, ok := getOperationType(operation)
 		if !ok {
 			continue // Unknown operation, skip it
 		}
 
 		// Organize metadata and data separately in the output
-		data := make(map[string]any, len(monitor.columnNames))
-		for i, name := range monitor.columnNames {
-			raw := columnData[i+3]
-			columnValue, ok := raw.(*sql.NullString)
-			if ok && columnValue.Valid {
-				data[name] = columnValue.String
-			} else {
-				data[name] = nil
-			}
-		}
+		data := extractColumnData(monitor.columnNames, columnData)
 
 		change := map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"TableName":     monitor.tableName,
-				"LSN":           hex.EncodeToString(lsn),
-				"Seq":           hex.EncodeToString(seq),
+				"LSN":           hex.EncodeToString(*lsn),
+				"Seq":           hex.EncodeToString(*seq),
 				"OperationID":   operation,
 				"OperationType": operationType,
 			},
 			"data": data,
 		}
 
+		log.Debug("Adding change to batch", "table", monitor.tableName, "change", change["metadata"])
+
 		changes = append(changes, change)
-		latestLSN = lsn
-		latestSeq = seq
+		latestLSN = *lsn
+		latestSeq = *seq
+
+		log.Debug("Change added, update latest LSN/Seq", "table", monitor.tableName, "latestLSN", hex.EncodeToString(latestLSN), "latestSeq", hex.EncodeToString(latestSeq))
 	}
 
 	// Return the changes and latest LSN/Seq without saving the checkpoint yet
@@ -272,23 +254,25 @@ func fetchColumnNames(db *sql.DB, tableName string) ([]string, error) {
 	return columns, rows.Err()
 }
 
-func (monitor *SqlServerTableMonitor) prepareScanTargets() ([]any, *[]byte, *int) {
+func (monitor *SqlServerTableMonitor) prepareScanTargets() ([]any, *[]byte, *[]byte, *int) {
 
 	var lsn []byte
+	var seq []byte
 	var operation int
 
 	// Prepare a slice of pointers for the columns
-	columnData := make([]any, len(monitor.columnNames)+2)
+	columnData := make([]any, len(monitor.columnNames)+3)
 	columnData[0] = &lsn
-	columnData[1] = &operation
+	columnData[1] = &seq
+	columnData[2] = &operation
 
 	// Prepare a slice of sql.NullString for the rest of the columns
 	columnValues := make([]sql.NullString, len(monitor.columnNames))
 	for i := range monitor.columnNames {
-		columnData[i+2] = &columnValues[i]
+		columnData[i+3] = &columnValues[i]
 	}
 
-	return columnData, &lsn, &operation
+	return columnData, &lsn, &seq, &operation
 }
 
 func getOperationType(op *int) (string, bool) {
@@ -312,11 +296,11 @@ func extractColumnData(columnNames []string, columnData []any) map[string]any {
 	// Create a map to hold the column data
 	data := make(map[string]any, len(columnNames))
 
-	// Note that the first two columns are LSN and operation
+	// Note that the first three columns are LSN, SEQ and operation
 	// The rest are the actual column values
-	// We start from index 2 to skip LSN and operation
+	// We start from index 3 to skip LSN, SEQ and operation
 	for i, name := range columnNames {
-		raw := columnData[i+2]
+		raw := columnData[i+3]
 		columnValue, ok := raw.(*sql.NullString)
 
 		if ok && columnValue.Valid {
