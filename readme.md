@@ -39,46 +39,193 @@
 
 ## Modern Architecture: Provider Orchestration
 
-### Data Flow
+The modern DStream architecture is built around a three-process orchestration model, inspired by Unix pipelines. DStream CLI acts as the orchestrator that launches, configures, and manages the communication between independent input and output provider processes.
+
+### Three-Process Architecture
 
 ```
-[Input Provider] --stdin/stdout--> [DStream CLI] --stdin/stdout--> [Output Provider]
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Input Provider │    │   DStream CLI   │    │ Output Provider │
+│   (Process 1)   │━━━▶│   (Process 2)   │━━━▶│   (Process 3)   │
+│                 │    │  Orchestrator   │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+      stdout/stderr          stdin/stdout          stdout/stderr
 ```
 
-DStream CLI orchestrates independent provider processes:
+### Process Communication Flow
 
-1. **Launches Input Provider**:
-   - Sends JSON configuration via stdin
-   - Reads JSON data envelopes from stdout
-   - Handles process lifecycle and errors
+1. **CLI launches both provider processes**
+   - Starts input and output provider binaries as separate processes
+   - Creates stdin/stdout/stderr pipes for inter-process communication
+   - Each provider remains completely independent with no shared memory
 
-2. **Launches Output Provider**:
-   - Sends JSON configuration via stdin
-   - Forwards data envelopes via stdin
-   - Monitors process health and completion
+2. **Configuration phase**
+   - CLI sends JSON configuration to input provider via stdin
+   - CLI sends JSON configuration to output provider via stdin
+   - Each provider reads its configuration and initializes
 
-3. **Data Pumping**:
-   - Pipes data from input provider stdout to output provider stdin
-   - Maintains data flow integrity with error handling
-   - Supports graceful shutdown with SIGTERM signals
+3. **Data streaming phase**
+   - Input provider generates data and writes JSON envelopes to stdout
+   - CLI reads from input provider's stdout
+   - CLI forwards data to output provider's stdin
+   - Output provider processes data and writes results to its stdout (or destination)
+
+4. **Logging and monitoring**
+   - Both providers write logs to stderr (forwarded to CLI stderr)
+   - CLI monitors both processes for errors or completion
+   - CLI handles graceful shutdown of both processes on completion or interruption
+
+### Detailed Data Flow Diagram
+
+```
+Input Provider Process:              CLI Process:                 Output Provider Process:
+┌─────────────────────┐             ┌────────────────┐           ┌─────────────────────┐
+│ 1. Read config from │◀────────────┤ Send config to │           │                     │
+│    stdin (JSON)     │             │ input provider │           │                     │
+├─────────────────────┤             ├────────────────┤           │                     │
+│                     │             │                │           │                     │
+│ 2. Generate data    │             │                │           │                     │
+│    (business logic) │             │                │           │                     │
+│                     │             │                │           │                     │
+├─────────────────────┤             ├────────────────┤           ├─────────────────────┤
+│                     │             │                │           │                     │
+│ 3. Write JSON       │─────────────▶ Read from      │           │                     │
+│    envelopes to     │             │ input stdout   │           │                     │
+│    stdout           │             │                │           │                     │
+│                     │             ├────────────────┤           │                     │
+│                     │             │                │─────────────▶ 1. Read config    │
+│                     │             │ Send config to │           │    from stdin      │
+│                     │             │ output provider│           │    (JSON)          │
+│                     │             │                │           │                     │
+│                     │             ├────────────────┤           ├─────────────────────┤
+│                     │             │                │           │                     │
+│                     │             │ Forward data   │─────────────▶ 2. Read data      │
+│                     │             │ to output      │           │    from stdin      │
+│                     │             │ stdin          │           │    (JSON envelopes) │
+│                     │             │                │           │                     │
+├─────────────────────┤             ├────────────────┤           ├─────────────────────┤
+│ 4. Write logs to    │─────────────▶ Forward stderr │─────────────▶ 3. Write logs to   │
+│    stderr           │             │ to console     │           │    stderr          │
+└─────────────────────┘             └────────────────┘           └─────────────────────┘
+```
 
 ### Provider Communication Protocol
 
-**Configuration** (first line via stdin):
+> 📄 **Implementation:** See [`pkg/executor/providers.go`](pkg/executor/providers.go) for complete orchestration logic
+
+#### Configuration Protocol (first line via stdin)
 ```json
 {"interval": 1000, "max_count": 10}
 ```
 
-**Data Envelopes** (subsequent lines via stdout/stdin):
+#### Data Envelope Protocol (subsequent lines over stdout/stdin)
 ```json
 {"data": {"value": 42}, "metadata": {"seq": 1, "source": "counter"}}
 ```
 
-**Logging** (stderr for debugging):
+#### Logging Protocol (stderr for diagnostics)
 ```
 [CounterInputProvider] Starting service...
 [ConsoleOutputProvider] Processed 1 messages
 ```
+
+### CLI Orchestrator Purpose
+
+The **DStream CLI** serves as the intelligent orchestrator in this three-process architecture. Its primary responsibilities include:
+
+#### Process Management
+- **Launch Control**: Starts input and output provider processes on demand
+- **Resource Management**: Creates and manages stdin/stdout/stderr pipes between processes
+- **Lifecycle Management**: Handles process startup, monitoring, and graceful shutdown
+- **Error Recovery**: Detects provider failures and initiates cleanup procedures
+
+#### Data Pipeline Orchestration
+- **Configuration Distribution**: Parses HCL configuration and distributes provider-specific configs
+- **Data Flow Control**: Acts as the data pump, reading from input provider and forwarding to output provider
+- **Protocol Translation**: Ensures proper JSON envelope format between providers
+- **Flow Monitoring**: Logs data flow statistics and handles streaming errors
+
+#### Operational Management
+- **Task Coordination**: Ensures both providers start in correct sequence with proper configuration
+- **Signal Handling**: Manages graceful shutdown on system interrupts (Ctrl+C, SIGTERM)
+- **Log Aggregation**: Collects and forwards stderr from both providers for centralized logging
+- **Status Reporting**: Provides real-time feedback on pipeline health and completion status
+
+#### Why This Design Works
+
+This orchestrator pattern solves the fundamental challenge of connecting independent streaming processes:
+
+- **No Direct Connection**: Input and output providers never communicate directly
+- **Protocol Simplicity**: Each provider only needs to handle stdin/stdout JSON
+- **Fault Tolerance**: CLI can restart failed providers without affecting the other
+- **Composability**: Any input provider can work with any output provider through the CLI
+- **Development Experience**: Providers can be developed and tested completely independently
+
+### Key Benefits of Three-Process Architecture
+
+1. **Process Isolation**: Complete isolation between providers prevents cascading failures
+2. **Universal Language Support**: Any language that can read/write stdin/stdout works as a provider
+3. **Simple Interface**: Providers only need to implement stdin/stdout JSON handling
+4. **Independent Testing**: Each provider can be tested independently using shell commands
+5. **Resource Control**: OS-level resource limits can be applied to each process separately
+6. **Easy Debugging**: Standard input/output redirection works for troubleshooting
+7. **Clean Shutdown**: Process signals (SIGTERM) enable graceful shutdown
+8. **Zero Dependencies**: Providers require no shared libraries or runtime coordination
+9. **Horizontal Scalability**: Multiple CLI instances can run different tasks simultaneously
+
+### Testing the Architecture
+
+> 📄 **Testing Reference:** Provider examples at [`../dstream-counter-input-provider/`](../dstream-counter-input-provider/) and [`../dstream-console-output-provider/`](../dstream-console-output-provider/)
+
+You can validate each component of the three-process architecture independently:
+
+#### Test Input Provider Alone
+```bash
+# Navigate to input provider directory
+cd ~/progs/dstream/dstream-counter-input-provider
+
+# Send configuration and see JSON envelopes output
+echo '{"interval": 1000, "max_count": 3}' | bin/Release/net9.0/osx-x64/counter-input-provider
+```
+
+#### Test Output Provider Alone
+```bash
+# Navigate to output provider directory  
+cd ~/progs/dstream/dstream-console-output-provider
+
+# Send configuration first, then pipe sample data
+{
+  echo '{"outputFormat": "simple"}'
+  echo '{"data": {"value": 42}, "metadata": {"seq": 1}}'
+  echo '{"data": {"value": 43}, "metadata": {"seq": 2}}'
+} | bin/Release/net9.0/osx-x64/console-output-provider
+```
+
+#### Test Complete Pipeline via CLI
+```bash
+# Navigate to CLI directory
+cd ~/progs/dstream/dstream
+
+# Run the full three-process orchestration
+go run . run counter-to-console
+
+# Or with debug logging to see orchestration details
+go run . run counter-to-console --log-level debug
+```
+
+#### Manual Pipeline Simulation
+```bash
+# You can even simulate the CLI orchestration manually with shell pipes:
+cd ~/progs/dstream
+
+# Start input provider with config, pipe to output provider with its config
+{
+  echo '{"outputFormat": "simple"}'
+  echo '{"interval": 1000, "max_count": 5}' | ../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider
+} | ../dstream-console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider
+```
+
+This testing approach demonstrates the **Unix pipeline philosophy** in action - each component works independently and can be composed together using standard shell tools.
 
 ## Key Features
 
@@ -141,6 +288,8 @@ DStream CLI orchestrates independent provider processes:
    ```
 
 ## Configuration
+
+> 📄 **Configuration Parsing:** See [`pkg/config/`](pkg/config/) for HCL parsing and [`pkg/config/tasks.go`](pkg/config/tasks.go) for task definitions
 
 DStream uses HCL for task configuration. Here's an example `dstream.hcl`:
 
@@ -219,6 +368,8 @@ task "dotnet-counter-plugin" {
 
 ## Usage
 
+> 📄 **CLI Implementation:** See [`cmd/run.go`](cmd/run.go) for command handling and [`pkg/executor/executor.go`](pkg/executor/executor.go) for task routing
+
 ### Running Provider Tasks (Modern)
 
 ```bash
@@ -260,6 +411,8 @@ go run . validate
 ```
 
 ## Data Envelope Format
+
+> 📄 **Data Types:** See [`../dstream-dotnet-sdk/sdk/Katasec.DStream.Abstractions/Envelope.cs`](../dstream-dotnet-sdk/sdk/Katasec.DStream.Abstractions/Envelope.cs) for .NET envelope definition
 
 DStream uses a standard JSON envelope format for provider communication:
 
@@ -320,6 +473,8 @@ DStream uses a standard JSON envelope format for provider communication:
 - [DStream .NET SDK](https://github.com/katasec/dstream-dotnet-sdk)
 
 ## Provider Ecosystem
+
+> 📄 **Provider Development:** See [`../dstream-dotnet-sdk/`](../dstream-dotnet-sdk/) for .NET SDK and provider templates
 
 ### Available Providers
 
