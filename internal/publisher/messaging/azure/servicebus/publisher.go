@@ -110,6 +110,8 @@ func (p *ServiceBusChangeDataTransport) PublishBatch(ctx context.Context, messag
 				log.Info("Batch full, sending current batch", "messageCount", messageBatch.NumMessages())
 				if err := p.sender.SendMessageBatch(ctx, messageBatch, nil); err != nil {
 					return fmt.Errorf("failed to send message batch: %w", err)
+				} else {
+					log.Info("Successfully partially published batch")
 				}
 
 				// Create a new batch

@@ -367,3 +367,5 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ## The Goal
 > Keep dstream lean, focused, and stateless—so it’s reliable, resilient, and boring (in the best way).
+
+## Release
