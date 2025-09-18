@@ -3,6 +3,50 @@
 
 **DStream** is a universal data streaming orchestration CLI that connects independent input and output providers using stdin/stdout communication. It supports both legacy Change Data Capture (CDC) workflows and modern provider-based architectures for streaming data from any source to any destination.
 
+## Table of Contents
+
+- [Architecture Evolution](#architecture-evolution)
+  - [🔄 Two Execution Models](#-two-execution-models)
+  - [✅ Unix Pipeline Philosophy](#-unix-pipeline-philosophy)
+  - [✅ Provider Independence](#-provider-independence)
+- [Modern Architecture: Provider Orchestration](#modern-architecture-provider-orchestration)
+  - [Three-Process Architecture](#three-process-architecture)
+  - [Process Communication Flow](#process-communication-flow)
+  - [Detailed Data Flow Diagram](#detailed-data-flow-diagram)
+  - [Provider Communication Protocol](#provider-communication-protocol)
+  - [CLI Orchestrator Purpose](#cli-orchestrator-purpose)
+  - [Key Benefits of Three-Process Architecture](#key-benefits-of-three-process-architecture)
+  - [Testing the Architecture](#testing-the-architecture)
+- [Key Features](#key-features)
+  - [Ingestion](#ingestion)
+  - [Routing](#routing)
+  - [General](#general)
+- [Installation](#installation)
+- [Configuration](#configuration)
+  - [Modern Provider Tasks](#modern-provider-tasks)
+  - [Legacy Plugin Tasks](#legacy-plugin-tasks)
+- [Usage](#usage)
+  - [Running Provider Tasks (Modern)](#running-provider-tasks-modern)
+  - [Running Plugin Tasks (Legacy)](#running-plugin-tasks-legacy)
+  - [Task Management](#task-management)
+- [Data Envelope Format](#data-envelope-format)
+  - [Counter Example](#counter-example)
+  - [CDC Example (Future)](#cdc-example-future)
+  - [Envelope Structure](#envelope-structure)
+- [Requirements](#requirements)
+  - [For Provider Tasks](#for-provider-tasks)
+  - [For Legacy Plugin Tasks](#for-legacy-plugin-tasks)
+  - [Example Providers](#example-providers)
+- [Provider Ecosystem](#provider-ecosystem)
+  - [Available Providers](#available-providers)
+  - [Creating Providers](#creating-providers)
+  - [Provider Distribution](#provider-distribution)
+- [Getting Started](#getting-started)
+  - [Quick Example](#quick-example)
+- [Contributing](#contributing)
+- [License](#license)
+- [Vision](#vision)
+
 ---
 
 ## Architecture Evolution
@@ -35,7 +79,9 @@
 
 > **Modern DStream**: Think "Unix pipeline for data" - simple, composable, battle-tested.
 
+[↑ Back to Top](#table-of-contents)
 
+---
 
 ## Modern Architecture: Provider Orchestration
 
@@ -227,6 +273,10 @@ cd ~/progs/dstream
 
 This testing approach demonstrates the **Unix pipeline philosophy** in action - each component works independently and can be composed together using standard shell tools.
 
+[↑ Back to Top](#table-of-contents)
+
+---
+
 ## Key Features
 
 ### Ingestion
@@ -365,6 +415,10 @@ task "dotnet-counter-plugin" {
   }
 }
 ```
+
+[↑ Back to Top](#table-of-contents)
+
+---
 
 ## Usage
 
@@ -522,6 +576,9 @@ input {
 }
 ```
 
+[↑ Back to Top](#table-of-contents)
+
+---
 
 ## Getting Started
 
