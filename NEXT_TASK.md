@@ -55,7 +55,98 @@ dstream destroy mssql-to-asb   # Clean up infrastructure for task
 - [ ] Create `CommandEnvelope<TConfig>` for deserialization
 - [ ] Add `InfrastructureProviderBase<TConfig>` with Pulumi integration
 
-### Phase 3: Database Table-Aware Azure Service Bus Provider
+### Phase 3: SQL Server CDC Input Provider Extraction ⭐ **HIGH VALUE**
+
+**Extract production-tested Go SQL CDC code and convert protocol:**
+
+#### Repository Setup
+- [ ] Checkout earlier DStream version with embedded SQL CDC
+- [ ] Create new directory: `~/progs/dstream/sqlcdc-input-provider`
+- [ ] Initialize as separate Go module: `go mod init github.com/katasec/sqlcdc-input-provider`
+- [ ] Extract production SQL CDC business logic from embedded CLI version
+
+#### Business Logic to Preserve ✅ (Keep As-Is)
+- [ ] SQL Server connection management and pooling
+- [ ] CDC table discovery and monitoring loops
+- [ ] LSN (Log Sequence Number) tracking and offset management
+- [ ] Change record parsing and transformation
+- [ ] Retry logic and error handling strategies
+- [ ] Distributed locking (Azure Blob Storage integration)
+- [ ] Adaptive polling and backoff strategies
+- [ ] Production-tested CDC change detection
+
+#### Integration Protocol to Convert 🔄 (gRPC → stdin/stdout)
+- [ ] **Remove**: gRPC server setup and HashiCorp plugin handshake
+- [ ] **Remove**: Protobuf message definitions and `StartRequest`/`GetSchema` methods
+- [ ] **Remove**: gRPC streaming and plugin lifecycle management
+- [ ] **Add**: JSON configuration reading from stdin (first line)
+- [ ] **Add**: JSON envelope writing to stdout (continuous stream)
+- [ ] **Add**: Error logging to stderr and graceful SIGTERM shutdown
+
+#### Provider Protocol Implementation
+- [ ] **Config Protocol**: Read JSON config from stdin: `{"connection_string": "...", "tables": ["Orders", "Customers"]}`
+- [ ] **Data Protocol**: Write JSON envelopes to stdout:
+  ```json
+  {"data": {"ID": "123", "Name": "Ameer"}, "metadata": {"TableName": "Persons", "OperationType": "Insert", "LSN": "0000004c000028200003"}}
+  ```
+- [ ] **Testing**: Validate with `echo '{"tables":["TestTable"]}' | ./sqlcdc-input-provider`
+
+#### Provider Naming
+- **Binary**: `dstream-sqlcdc-input-provider`
+- **Directory**: `sqlcdc-input-provider`
+- **Module**: `github.com/katasec/sqlcdc-input-provider`
+
+#### Extraction Workflow (Step-by-Step)
+```bash
+# 1. Find the earlier version with embedded SQL CDC
+cd ~/progs/dstream/dstream
+git log --oneline --grep="CDC" --grep="sql" --all  # Find relevant commits
+
+# 2. Checkout that version
+git checkout <commit-with-embedded-cdc>
+
+# 3. Create new provider directory
+cd ~/progs/dstream
+mkdir sqlcdc-input-provider
+cd sqlcdc-input-provider
+
+# 4. Initialize new Go module
+go mod init github.com/katasec/sqlcdc-input-provider
+
+# 5. Copy relevant CDC packages
+# Copy from: dstream/pkg/cdc/, dstream/internal/sqlcdc/, etc.
+# Inspect and identify which packages contain the CDC business logic
+
+# 6. Create main.go with stdin/stdout protocol
+# Replace gRPC interface with JSON stdin/stdout handling
+
+# 7. Test extraction
+echo '{"connection_string":"test", "tables":["TestTable"]}' | go run .
+```
+
+#### Key Code Transformation Pattern
+```go
+// OLD: gRPC plugin pattern
+func (p *CDCPlugin) Start(ctx context.Context, req *pb.StartRequest) error {
+    // Business logic here
+    for change := range p.monitorChanges() {
+        p.sendViaGRPC(change)  // Remove this
+    }
+}
+
+// NEW: stdin/stdout provider pattern  
+func main() {
+    config := readJSONFromStdin()  // Add this
+    provider := NewCDCProvider(config)
+    
+    for change := range provider.monitorChanges() {  // Keep business logic
+        envelope := createJSONEnvelope(change)    // Add this
+        writeJSONToStdout(envelope)               // Add this
+    }
+}
+```
+
+### Phase 4: Database Table-Aware Azure Service Bus Provider
 
 **New provider to create:**
 - [ ] `DbtableAsbOutputProvider` implementing both `IOutputProvider` and `IInfrastructureProvider`
@@ -124,11 +215,27 @@ dstream destroy mssql-to-asb  # Cleans up all created queues
 
 ## 🎯 Success Criteria
 
+### Phase 1: CLI Infrastructure Commands
 - [ ] CLI accepts `init`, `destroy`, `plan`, `status` commands
 - [ ] Commands are routed to providers via JSON command header
-- [ ] ASB output provider creates/destroys queues dynamically
-- [ ] End-to-end test: MS SQL CDC tables → ASB queues with full lifecycle
 - [ ] Backward compatibility maintained for existing providers
+
+### Phase 3: SQL CDC Provider Extraction
+- [ ] Production SQL CDC logic extracted and preserved
+- [ ] Provider reads JSON config from stdin, writes JSON envelopes to stdout
+- [ ] Compatible with CLI stdin/stdout orchestration protocol
+- [ ] Independent testing: `echo '{"tables":["TestTable"]}' | ./sqlcdc-input-provider`
+- [ ] All CDC features working: table discovery, LSN tracking, change detection
+
+### Phase 4: Database Table-Aware ASB Provider
+- [ ] ASB output provider creates/destroys queues dynamically based on table metadata
+- [ ] Infrastructure lifecycle management with embedded Pulumi
+- [ ] End-to-end test: SQL CDC tables → ASB queues with full lifecycle
+
+### Complete Pipeline Success
+- [ ] **Full workflow**: `dstream init mssql-to-asb` → `dstream run mssql-to-asb` → `dstream destroy mssql-to-asb`
+- [ ] **Data flow**: SQL CDC table changes → JSON envelopes → Table-specific ASB queues
+- [ ] **Infrastructure**: Dynamic queue creation/destruction based on monitored tables
 
 ## 📖 Reference
 
