@@ -149,7 +149,7 @@ func (m *SqlServerTableMonitor) MonitorTable(ctx context.Context) error {
 
 // fetchCDCChanges queries CDC changes and returns relevant events as a slice of maps
 func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte, lastSeq []byte) ([]map[string]interface{}, []byte, []byte, error) {
-	log.Info("Polling changes", "table", monitor.tableName, "lsn", hex.EncodeToString(lastLSN), "seq", hex.EncodeToString(lastSeq))
+	//log.Info("Polling changes", "table", monitor.tableName, "lsn", hex.EncodeToString(lastLSN), "seq", hex.EncodeToString(lastSeq))
 
 	// Get the optimal batch size from BatchSizer
 	batchSize := monitor.batchSizer.GetBatchSize()
@@ -160,12 +160,18 @@ func (monitor *SqlServerTableMonitor) fetchCDCChanges(lastLSN []byte, lastSeq []
 		columnList += ", " + strings.Join(monitor.columnNames, ", ")
 	}
 
+	// The WHERE handles the two necessary conditions to avoid missing or duplicating data:
+	// 1. __$start_lsn > @lastLSN: This correctly selects all new transactions with a log sequence number greater than last checkpoint.
+    // 2. OR (ct.__$start_lsn = @lastLSN AND ct.__$seqval > @lastSeq): This correctly selects any remaining changes within the same last transaction, 
+	//    using the __$seqval to ensure you continue from where you left off.
 	query := fmt.Sprintf(`
 		SELECT TOP(%d) %s
 		FROM cdc.dbo_%s_CT AS ct WITH (NOLOCK)
-		WHERE (ct.__$start_lsn >= @lastLSN
-		   AND ct.__$seqval > @lastSeq)
-		   AND ct.__$operation IN (1, 2, 4)
+		WHERE (
+			 ct.__$start_lsn > @lastLSN
+		  	 OR (ct.__$start_lsn = @lastLSN AND ct.__$seqval > @lastSeq)
+		)
+		AND ct.__$operation IN (1, 2, 4)
 		ORDER BY ct.__$start_lsn, ct.__$seqval
 	`, batchSize, columnList, monitor.tableName)
 
