@@ -66,10 +66,19 @@ func ExecuteProviderTaskWithCommand(task *config.TaskBlock, command string) erro
 	outputCmd.Stdout = os.Stdout // Forward stdout for final output
 	outputCmd.Stderr = os.Stderr // Forward stderr for logging
 
-	// Serialize configurations with command envelope
+	// Input providers only get "run" command (they're just readers)
+	// Output providers get the actual lifecycle command (init/destroy/plan/status/run)
+	inputCommand := "run"
+	if command != "run" {
+		log.Debug("Input providers only support 'run' command - using 'run' for input provider", 
+			"original_command", command, 
+			"input_command", inputCommand)
+	}
+
+	// Create command envelopes
 	inputConfig, err := createCommandEnvelope(func() (string, error) {
 		return task.InputConfigAsJSON()
-	}, command)
+	}, inputCommand)
 	if err != nil {
 		return fmt.Errorf("create input command envelope: %w", err)
 	}
@@ -81,9 +90,19 @@ func ExecuteProviderTaskWithCommand(task *config.TaskBlock, command string) erro
 		return fmt.Errorf("create output command envelope: %w", err)
 	}
 
-	log.Debug("Sending configurations to providers",
-		"input_config", inputConfig,
-		"output_config", outputConfig)
+	if command == "run" {
+		log.Debug("Sending 'run' command to both providers for data processing",
+			"input_config", inputConfig,
+			"output_config", outputConfig)
+	} else {
+		log.Info("Sending lifecycle command to output provider only",
+			"lifecycle_command", command,
+			"input_command", "run",
+			"output_command", command)
+		log.Debug("Provider configurations",
+			"input_config", inputConfig,
+			"output_config", outputConfig)
+	}
 
 	// Start input provider
 	if err := inputCmd.Start(); err != nil {

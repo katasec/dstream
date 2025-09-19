@@ -69,3 +69,24 @@ task "counter-to-console" {
     }
   }
 }
+
+# Infrastructure lifecycle test task - demonstrates input provider (no infra) + output provider (with infra)
+task "test-infrastructure" {
+  type = "providers"  # Provider orchestration with infrastructure lifecycle
+  
+  input {
+    provider_path = "../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider"
+    config {
+      interval = 2000     # Generate every 2 seconds
+      max_count = 10      # Generate 10 messages
+    }
+  }
+  
+  output {
+    provider_path = "../dstream-dotnet-sdk/samples/test-infrastructure-provider/bin/Release/net9.0/osx-arm64/publish/test-infrastructure-provider"
+    config {
+      testValue = "azure-service-bus"
+      resourceCount = 3   # This output provider will manage 3 infrastructure resources
+    }
+  }
+}
