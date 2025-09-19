@@ -3,6 +3,7 @@ package executor
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,7 +16,13 @@ import (
 
 // ExecuteProviderTask orchestrates independent input and output provider processes
 // Data flows: Input Provider stdout → CLI → Output Provider stdin
+// This is the default "run" operation.
 func ExecuteProviderTask(task *config.TaskBlock) error {
+	return ExecuteProviderTaskWithCommand(task, "run")
+}
+
+// ExecuteProviderTaskWithCommand orchestrates providers with a specific lifecycle command
+func ExecuteProviderTaskWithCommand(task *config.TaskBlock, command string) error {
 	log.Info("Starting provider orchestration", "task", task.Name)
 
 	// Resolve input provider binary path
@@ -59,15 +66,19 @@ func ExecuteProviderTask(task *config.TaskBlock) error {
 	outputCmd.Stdout = os.Stdout // Forward stdout for final output
 	outputCmd.Stderr = os.Stderr // Forward stderr for logging
 
-	// Serialize configurations
-	inputConfig, err := task.InputConfigAsJSON()
+	// Serialize configurations with command envelope
+	inputConfig, err := createCommandEnvelope(func() (string, error) {
+		return task.InputConfigAsJSON()
+	}, command)
 	if err != nil {
-		return fmt.Errorf("serialize input config: %w", err)
+		return fmt.Errorf("create input command envelope: %w", err)
 	}
 
-	outputConfig, err := task.OutputConfigAsJSON()
+	outputConfig, err := createCommandEnvelope(func() (string, error) {
+		return task.OutputConfigAsJSON()
+	}, command)
 	if err != nil {
-		return fmt.Errorf("serialize output config: %w", err)
+		return fmt.Errorf("create output command envelope: %w", err)
 	}
 
 	log.Debug("Sending configurations to providers",
@@ -235,4 +246,34 @@ func gracefulShutdown(inputCmd, outputCmd *exec.Cmd) {
 	}
 
 	log.Info("Graceful shutdown completed")
+}
+
+// createCommandEnvelope wraps a provider config JSON with a command header
+// This implements the command envelope pattern from DESIGN_NOTES_VERB_ROUTING.md
+func createCommandEnvelope(configFunc func() (string, error), command string) (string, error) {
+	// Get the original config JSON
+	configJSON, err := configFunc()
+	if err != nil {
+		return "", fmt.Errorf("get config JSON: %w", err)
+	}
+
+	// Parse the original config to ensure it's valid JSON
+	var config interface{}
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		return "", fmt.Errorf("parse config JSON: %w", err)
+	}
+
+	// Create the command envelope
+	envelope := map[string]interface{}{
+		"command": command,
+		"config":  config,
+	}
+
+	// Marshal the envelope back to JSON
+	envelopeJSON, err := json.Marshal(envelope)
+	if err != nil {
+		return "", fmt.Errorf("marshal command envelope: %w", err)
+	}
+
+	return string(envelopeJSON), nil
 }

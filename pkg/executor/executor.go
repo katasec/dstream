@@ -17,14 +17,23 @@ import (
 )
 
 // ExecuteTask looks up a task in dstream.hcl and runs its plugin via gRPC or orchestrates providers.
+// This is the default "run" operation.
 func ExecuteTask(task *config.TaskBlock) error {
+	return ExecuteTaskWithCommand(task, "run")
+}
+
+// ExecuteTaskWithCommand executes a task with a specific lifecycle command (init/run/destroy/plan/status)
+func ExecuteTaskWithCommand(task *config.TaskBlock, command string) error {
 	// Route based on task type
 	switch task.Type {
 	case "providers":
 		// New independent provider orchestration
-		return ExecuteProviderTask(task)
+		return ExecuteProviderTaskWithCommand(task, command)
 	case "plugin", "":
 		// Legacy single plugin execution (default for backward compatibility)
+		if command != "run" {
+			return fmt.Errorf("legacy plugin tasks only support 'run' command, got '%s'", command)
+		}
 		return executePluginTask(task)
 	default:
 		return fmt.Errorf("unsupported task type: %s", task.Type)
