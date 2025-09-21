@@ -4,6 +4,12 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+## 🗺️ **Navigation - Key Documents**
+
+- **`ROADMAP.md`** - 🎯 **Current development roadmap and priorities** (START HERE for planning)
+- **`DESIGN_NOTES_PHASE_2_COMPLETE.md`** - ✅ Completed infrastructure lifecycle management 
+- **`WARP_CONTEXT_RESTORE.md`** - 🚀 Quick context restoration for new Warp sessions
+
 ## Development Commands
 
 ### Environment Configuration
@@ -44,31 +50,25 @@ cd ~/progs/dstream/dstream-dotnet-sdk
 
 ### Modern Provider Development
 
-**Building Individual Providers** (Recommended):
+**Building Sample Providers** (SDK Testing & Examples):
 ```bash
-# Counter Input Provider
-cd ~/progs/dstream/dstream-counter-input-provider
-make                    # Show help menu with available commands
-make build             # Build single self-contained binary (~68MB)
-make clean             # Remove all build artifacts
-make rebuild           # Clean and build from scratch
-make verify            # Check binary exists in correct location
-make test              # Test provider with sample config
+# Navigate to SDK directory
+cd ~/progs/dstream/dstream-dotnet-sdk
 
-# Console Output Provider  
-cd ~/progs/dstream/dstream-console-output-provider
-make                    # Show help menu with available commands
-make build             # Build single self-contained binary (~68MB)
-# ... same commands as above
+# Build counter input provider sample
+/usr/local/share/dotnet/dotnet build samples/counter-input-provider/counter-input-provider.csproj -c Release
+
+# Build console output provider sample  
+/usr/local/share/dotnet/dotnet build samples/console-output-provider/console-output-provider.csproj -c Release
+
+# Build all samples together
+/usr/local/share/dotnet/dotnet build dstream-dotnet-sdk.sln -c Release
 ```
 
-**Build All Providers:**
-```bash
-# Build both providers from the root
-cd ~/progs/dstream
-make -C dstream-counter-input-provider rebuild
-make -C dstream-console-output-provider rebuild
-```
+**Sample Provider Locations:**
+- `~/progs/dstream/dstream-dotnet-sdk/samples/counter-input-provider/`
+- `~/progs/dstream/dstream-dotnet-sdk/samples/console-output-provider/`
+- `~/progs/dstream/dstream-dotnet-sdk/samples/Playground/`
 
 ### Provider Makefile System
 
@@ -130,11 +130,11 @@ timeout 30s go run . run counter-to-console
 # task "counter-to-console" {
 #   type = "providers"  # Modern provider orchestration
 #   input {
-#     provider_path = "../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider"
+#     provider_path = "../dstream-dotnet-sdk/samples/counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider"
 #     config { interval = 1000; max_count = 50 }
 #   }
 #   output {
-#     provider_path = "../dstream-console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider"
+#     provider_path = "../dstream-dotnet-sdk/samples/console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider"
 #     config { outputFormat = "structured" }
 #   }
 # }
