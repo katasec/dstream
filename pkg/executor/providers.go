@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/katasec/dstream/pkg/config"
+	"github.com/katasec/dstream/pkg/orasfetch"
 )
 
 // ExecuteProviderTask orchestrates independent input and output provider processes
@@ -201,7 +202,11 @@ func resolveProviderPath(block interface{}) (string, error) {
 			return b.ProviderPath, nil
 		}
 		if b.ProviderRef != "" {
-			return "", fmt.Errorf("provider_ref not yet implemented for input providers")
+			path, err := orasfetch.PullBinary(b.ProviderRef)
+			if err != nil {
+				return "", fmt.Errorf("pull input provider from %s: %w", b.ProviderRef, err)
+			}
+			return path, nil
 		}
 		return "", fmt.Errorf("input block must specify provider_path or provider_ref")
 	
@@ -210,7 +215,11 @@ func resolveProviderPath(block interface{}) (string, error) {
 			return b.ProviderPath, nil
 		}
 		if b.ProviderRef != "" {
-			return "", fmt.Errorf("provider_ref not yet implemented for output providers")
+			path, err := orasfetch.PullBinary(b.ProviderRef)
+			if err != nil {
+				return "", fmt.Errorf("pull output provider from %s: %w", b.ProviderRef, err)
+			}
+			return path, nil
 		}
 		return "", fmt.Errorf("output block must specify provider_path or provider_ref")
 	
