@@ -1,648 +1,380 @@
-
 # DStream
 
-**DStream** is a universal data streaming orchestration CLI that connects independent input and output providers using stdin/stdout communication. It supports both legacy Change Data Capture (CDC) workflows and modern provider-based architectures for streaming data from any source to any destination.
+**DStream is Terraform for data streaming.** Sources can be databases, APIs, files, queues—anything. Destinations can be databases, APIs, message brokers, data lakes—anywhere. 
 
-## Table of Contents
+Declare your data pipeline in HCL, run a single command, and DStream orchestrates everything.
 
-- [Architecture Evolution](#architecture-evolution)
-  - [🔄 Two Execution Models](#-two-execution-models)
-  - [✅ Unix Pipeline Philosophy](#-unix-pipeline-philosophy)
-  - [✅ Provider Independence](#-provider-independence)
-- [Modern Architecture: Provider Orchestration](#modern-architecture-provider-orchestration)
-  - [Three-Process Architecture](#three-process-architecture)
-  - [Process Communication Flow](#process-communication-flow)
-  - [Detailed Data Flow Diagram](#detailed-data-flow-diagram)
-  - [Provider Communication Protocol](#provider-communication-protocol)
-  - [CLI Orchestrator Purpose](#cli-orchestrator-purpose)
-  - [Key Benefits of Three-Process Architecture](#key-benefits-of-three-process-architecture)
-  - [Testing the Architecture](#testing-the-architecture)
-- [Key Features](#key-features)
-  - [Ingestion](#ingestion)
-  - [Routing](#routing)
-  - [General](#general)
-- [Installation](#installation)
-- [Configuration](#configuration)
-  - [Modern Provider Tasks](#modern-provider-tasks)
-  - [Legacy Plugin Tasks](#legacy-plugin-tasks)
-- [Usage](#usage)
-  - [Running Provider Tasks (Modern)](#running-provider-tasks-modern)
-  - [Running Plugin Tasks (Legacy)](#running-plugin-tasks-legacy)
-  - [Task Management](#task-management)
-- [Data Envelope Format](#data-envelope-format)
-  - [Counter Example](#counter-example)
-  - [CDC Example (Future)](#cdc-example-future)
-  - [Envelope Structure](#envelope-structure)
-- [Requirements](#requirements)
-  - [For Provider Tasks](#for-provider-tasks)
-  - [For Legacy Plugin Tasks](#for-legacy-plugin-tasks)
-  - [Example Providers](#example-providers)
-- [Provider Ecosystem](#provider-ecosystem)
-  - [Available Providers](#available-providers)
-  - [Creating Providers](#creating-providers)
-  - [Provider Distribution](#provider-distribution)
-- [Getting Started](#getting-started)
-  - [Quick Example](#quick-example)
-- [Contributing](#contributing)
-- [License](#license)
-- [Vision](#vision)
+## Quick Start (30 seconds)
 
----
+Here's a real-world data pipeline that streams from a counter generator to console output:
 
-## Architecture Evolution
-
-### 🔄 Two Execution Models
-
-**1. Legacy Plugin Mode (`type = "plugin"`):**
-- Single .NET plugin binary communicating via gRPC
-- HashiCorp go-plugin protocol
-- Backward compatibility maintained
-
-**2. Modern Provider Mode (`type = "providers"`):**
-- Independent input and output provider binaries
-- Unix stdin/stdout communication
-- Language-agnostic ecosystem
-- Composable, testable, debuggable
-
-### ✅ Unix Pipeline Philosophy
-- **Simple I/O**: JSON over stdin/stdout pipes
-- **Process Isolation**: Each provider runs independently
-- **Universal Compatibility**: Works with any programming language
-- **Easy Testing**: Test providers directly with shell commands
-- **Operational Simplicity**: Standard Unix tooling and patterns
-
-### ✅ Provider Independence
-- **Standalone Binaries**: Each provider is a self-contained executable
-- **Zero Dependencies**: No shared state or coordination required
-- **Easy Development**: Focus on business logic, CLI handles orchestration
-- **Fault Isolation**: Provider failures don't affect others
-
-> **Modern DStream**: Think "Unix pipeline for data" - simple, composable, battle-tested.
-
-[↑ Back to Top](#table-of-contents)
-
----
-
-## Modern Architecture: Provider Orchestration
-
-The modern DStream architecture is built around a three-process orchestration model, inspired by Unix pipelines. DStream CLI acts as the orchestrator that launches, configures, and manages the communication between independent input and output provider processes.
-
-### Three-Process Architecture
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Input Provider │    │   DStream CLI   │    │ Output Provider │
-│   (Process 1)   │━━━▶│   (Process 2)   │━━━▶│   (Process 3)   │
-│                 │    │  Orchestrator   │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-      stdout/stderr          stdin/stdout          stdout/stderr
-```
-
-### Process Communication Flow
-
-1. **CLI launches both provider processes**
-   - Starts input and output provider binaries as separate processes
-   - Creates stdin/stdout/stderr pipes for inter-process communication
-   - Each provider remains completely independent with no shared memory
-
-2. **Configuration phase**
-   - CLI sends JSON configuration to input provider via stdin
-   - CLI sends JSON configuration to output provider via stdin
-   - Each provider reads its configuration and initializes
-
-3. **Data streaming phase**
-   - Input provider generates data and writes JSON envelopes to stdout
-   - CLI reads from input provider's stdout
-   - CLI forwards data to output provider's stdin
-   - Output provider processes data and writes results to its stdout (or destination)
-
-4. **Logging and monitoring**
-   - Both providers write logs to stderr (forwarded to CLI stderr)
-   - CLI monitors both processes for errors or completion
-   - CLI handles graceful shutdown of both processes on completion or interruption
-
-### Detailed Data Flow Diagram
-
-```
-Input Provider Process:              CLI Process:                 Output Provider Process:
-┌─────────────────────┐             ┌────────────────┐           ┌─────────────────────┐
-│ 1. Read config from │◀────────────┤ Send config to │           │                     │
-│    stdin (JSON)     │             │ input provider │           │                     │
-├─────────────────────┤             ├────────────────┤           │                     │
-│                     │             │                │           │                     │
-│ 2. Generate data    │             │                │           │                     │
-│    (business logic) │             │                │           │                     │
-│                     │             │                │           │                     │
-├─────────────────────┤             ├────────────────┤           ├─────────────────────┤
-│                     │             │                │           │                     │
-│ 3. Write JSON       │─────────────▶ Read from      │           │                     │
-│    envelopes to     │             │ input stdout   │           │                     │
-│    stdout           │             │                │           │                     │
-│                     │             ├────────────────┤           │                     │
-│                     │             │                │─────────────▶ 1. Read config    │
-│                     │             │ Send config to │           │    from stdin      │
-│                     │             │ output provider│           │    (JSON)          │
-│                     │             │                │           │                     │
-│                     │             ├────────────────┤           ├─────────────────────┤
-│                     │             │                │           │                     │
-│                     │             │ Forward data   │─────────────▶ 2. Read data      │
-│                     │             │ to output      │           │    from stdin      │
-│                     │             │ stdin          │           │    (JSON envelopes) │
-│                     │             │                │           │                     │
-├─────────────────────┤             ├────────────────┤           ├─────────────────────┤
-│ 4. Write logs to    │─────────────▶ Forward stderr │─────────────▶ 3. Write logs to   │
-│    stderr           │             │ to console     │           │    stderr          │
-└─────────────────────┘             └────────────────┘           └─────────────────────┘
-```
-
-### Provider Communication Protocol
-
-> 📄 **Implementation:** See [`pkg/executor/providers.go`](pkg/executor/providers.go) for complete orchestration logic
-
-#### Configuration Protocol (first line via stdin)
-```json
-{"interval": 1000, "max_count": 10}
-```
-
-#### Data Envelope Protocol (subsequent lines over stdout/stdin)
-```json
-{"data": {"value": 42}, "metadata": {"seq": 1, "source": "counter"}}
-```
-
-#### Logging Protocol (stderr for diagnostics)
-```
-[CounterInputProvider] Starting service...
-[ConsoleOutputProvider] Processed 1 messages
-```
-
-### CLI Orchestrator Purpose
-
-The **DStream CLI** serves as the intelligent orchestrator in this three-process architecture. Its primary responsibilities include:
-
-#### Process Management
-- **Launch Control**: Starts input and output provider processes on demand
-- **Resource Management**: Creates and manages stdin/stdout/stderr pipes between processes
-- **Lifecycle Management**: Handles process startup, monitoring, and graceful shutdown
-- **Error Recovery**: Detects provider failures and initiates cleanup procedures
-
-#### Data Pipeline Orchestration
-- **Configuration Distribution**: Parses HCL configuration and distributes provider-specific configs
-- **Data Flow Control**: Acts as the data pump, reading from input provider and forwarding to output provider
-- **Protocol Translation**: Ensures proper JSON envelope format between providers
-- **Flow Monitoring**: Logs data flow statistics and handles streaming errors
-
-#### Operational Management
-- **Task Coordination**: Ensures both providers start in correct sequence with proper configuration
-- **Signal Handling**: Manages graceful shutdown on system interrupts (Ctrl+C, SIGTERM)
-- **Log Aggregation**: Collects and forwards stderr from both providers for centralized logging
-- **Status Reporting**: Provides real-time feedback on pipeline health and completion status
-
-#### Why This Design Works
-
-This orchestrator pattern solves the fundamental challenge of connecting independent streaming processes:
-
-- **No Direct Connection**: Input and output providers never communicate directly
-- **Protocol Simplicity**: Each provider only needs to handle stdin/stdout JSON
-- **Fault Tolerance**: CLI can restart failed providers without affecting the other
-- **Composability**: Any input provider can work with any output provider through the CLI
-- **Development Experience**: Providers can be developed and tested completely independently
-
-### Key Benefits of Three-Process Architecture
-
-1. **Process Isolation**: Complete isolation between providers prevents cascading failures
-2. **Universal Language Support**: Any language that can read/write stdin/stdout works as a provider
-3. **Simple Interface**: Providers only need to implement stdin/stdout JSON handling
-4. **Independent Testing**: Each provider can be tested independently using shell commands
-5. **Resource Control**: OS-level resource limits can be applied to each process separately
-6. **Easy Debugging**: Standard input/output redirection works for troubleshooting
-7. **Clean Shutdown**: Process signals (SIGTERM) enable graceful shutdown
-8. **Zero Dependencies**: Providers require no shared libraries or runtime coordination
-9. **Horizontal Scalability**: Multiple CLI instances can run different tasks simultaneously
-
-### Testing the Architecture
-
-> 📄 **Testing Reference:** Provider examples at [`../dstream-counter-input-provider/`](../dstream-counter-input-provider/) and [`../dstream-console-output-provider/`](../dstream-console-output-provider/)
-
-You can validate each component of the three-process architecture independently:
-
-#### Test Input Provider Alone
-```bash
-# Navigate to input provider directory
-cd ~/progs/dstream/dstream-counter-input-provider
-
-# Send configuration and see JSON envelopes output
-echo '{"interval": 1000, "max_count": 3}' | bin/Release/net9.0/osx-x64/counter-input-provider
-```
-
-#### Test Output Provider Alone
-```bash
-# Navigate to output provider directory  
-cd ~/progs/dstream/dstream-console-output-provider
-
-# Send configuration first, then pipe sample data
-{
-  echo '{"outputFormat": "simple"}'
-  echo '{"data": {"value": 42}, "metadata": {"seq": 1}}'
-  echo '{"data": {"value": 43}, "metadata": {"seq": 2}}'
-} | bin/Release/net9.0/osx-x64/console-output-provider
-```
-
-#### Test Complete Pipeline via CLI
-```bash
-# Navigate to CLI directory
-cd ~/progs/dstream/dstream
-
-# Run the full three-process orchestration
-go run . run counter-to-console
-
-# Or with debug logging to see orchestration details
-go run . run counter-to-console --log-level debug
-```
-
-#### Manual Pipeline Simulation
-```bash
-# You can even simulate the CLI orchestration manually with shell pipes:
-cd ~/progs/dstream
-
-# Start input provider with config, pipe to output provider with its config
-{
-  echo '{"outputFormat": "simple"}'
-  echo '{"interval": 1000, "max_count": 5}' | ../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider
-} | ../dstream-console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider
-```
-
-This testing approach demonstrates the **Unix pipeline philosophy** in action - each component works independently and can be composed together using standard shell tools.
-
-[↑ Back to Top](#table-of-contents)
-
----
-
-## Key Features
-
-### Ingestion
-- **CDC Monitoring**: Tracks changes (inserts, updates, deletes) on MS SQL Server tables enabled with CDC
-- **Reliable Offset Management**: Updates CDC offsets only after successful publish to ingest queue
-- **Distributed Locking**: Uses Azure Blob Storage for distributed locking in multi-instance deployments
-- **Adaptive Polling**: Features adaptive backoff for table monitoring based on change frequency
-- **Automatic Topic Creation**: Creates topics and subscriptions for each monitored table
-
-### Routing
-- **Optimized Publishing**: Pre-creates and caches publishers at startup for better performance
-- **Reliable Delivery**: Ensures messages are properly delivered to destination topics
-- **Message Preservation**: Maintains original message properties during routing
-- **Automatic Topic Management**: Creates topics and subscriptions as needed
-
-### General
-- **Flexible Configuration**: HCL-based configuration with environment variable support
-- **Structured Logging**: Built-in structured logging with configurable levels
-- **High Availability**: Supports running multiple instances for redundancy
-- **Message Metadata**: Includes rich metadata for proper message routing and tracking
-
-## Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/katasec/dstream.git
-   cd dstream
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   go mod tidy
-   ```
-
-3. **Build the CLI**:
-   ```bash
-   go build -o dstream
-   ```
-
-4. **Create your task configuration** (`dstream.hcl`):
-   ```hcl
-   task "my-pipeline" {
-     type = "providers"
-     
-     input {
-       provider_path = "./my-input-provider"
-       config {
-         # Input provider configuration
-       }
-     }
-     
-     output {
-       provider_path = "./my-output-provider"
-       config {
-         # Output provider configuration
-       }
-     }
-   }
-   ```
-
-## Configuration
-
-> 📄 **Configuration Parsing:** See [`pkg/config/`](pkg/config/) for HCL parsing and [`pkg/config/tasks.go`](pkg/config/tasks.go) for task definitions
-
-DStream uses HCL for task configuration. Here's an example `dstream.hcl`:
-
-### Modern Provider Tasks
-
+**1. Create `dstream.hcl`:**
 ```hcl
-# Independent provider orchestration (recommended)
-task "counter-to-console" {
-  type = "providers"  # New provider orchestration mode
-  
-  input {
-    provider_path = "../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider"
-    config {
-      interval = 1000   # Generate counter every 1 second
-      max_count = 50    # Stop after 50 iterations
-    }
-  }
-  
-  output {
-    provider_path = "../dstream-console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider"
-    config {
-      outputFormat = "simple"  # Use simple output format
-    }
-  }
-}
-
-# Future: OCI container image providers
-task "production-pipeline" {
+task "my-pipeline" {
   type = "providers"
   
   input {
-    provider_ref = "ghcr.io/katasec/mssql-cdc-provider:v1.0.0"
+    provider_ref = "ghcr.io/writeameer/dstream-counter-input-provider:v0.3.0"
     config {
-      connection_string = "{{ env \"DATABASE_CONNECTION_STRING\" }}"
-      tables = ["Orders", "Customers"]
+      interval = 1000    # Generate every 1 second
+      maxCount = 5       # Stop after 5 messages
     }
   }
   
   output {
-    provider_ref = "ghcr.io/katasec/azure-servicebus-provider:v1.0.0"
+    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
     config {
-      connection_string = "{{ env \"MESSAGING_CONNECTION_STRING\" }}"
-      queue_name = "data-events"
+      outputFormat = "simple"   # Clean output format
     }
   }
 }
 ```
 
-### Legacy Plugin Tasks
-
-```hcl
-# Legacy single plugin mode (backward compatibility)
-task "dotnet-counter-plugin" {
-  type = "plugin"
-  plugin_path = "../dstream-dotnet-sdk/samples/dstream-dotnet-test/out/dstream-dotnet-test"
-   
-  config {
-    interval = 500  # Plugin-level configuration
-  }
-  
-  input {
-    provider = "null"
-    config {
-      interval = 1000
-    }
-  }
-  
-  output {
-    provider = "console"
-    config {
-      format = "json"
-    }
-  }
-}
+**2. Run your pipeline:**
+```bash
+go run . run my-pipeline
 ```
 
-[↑ Back to Top](#table-of-contents)
+**3. See it work:**
+```
+[CounterInputProvider] Starting counter with interval=1000ms, max_count=5
+Message #1: {"value":1,"timestamp":"2025-09-25T17:30:22.825803+00:00"}
+Message #2: {"value":2,"timestamp":"2025-09-25T17:30:23.839113+00:00"}
+Message #3: {"value":3,"timestamp":"2025-09-25T17:30:24.843170+00:00"}
+Message #4: {"value":4,"timestamp":"2025-09-25T17:30:25.844992+00:00"}
+Message #5: {"value":5,"timestamp":"2025-09-25T17:30:26.846957+00:00"}
+✅ Task "my-pipeline" executed successfully
+```
+
+That's it! DStream automatically:
+- 🚀 **Pulled providers** from the OCI registry (GHCR)
+- 🔧 **Configured** both input and output providers
+- 📡 **Streamed data** from counter to console in real-time
+- 🛡️ **Handled** process lifecycle and graceful shutdown
 
 ---
 
-## Usage
+## Why DStream?
 
-> 📄 **CLI Implementation:** See [`cmd/run.go`](cmd/run.go) for command handling and [`pkg/executor/executor.go`](pkg/executor/executor.go) for task routing
+### The Problem: Data Integration Complexity
+- Moving data between systems requires custom code for each source/destination pair
+- No standard way to compose, test, or deploy data pipelines
+- Proprietary platforms lock you into specific languages, clouds, or vendors
 
-### Running Provider Tasks (Modern)
+### The Solution: Infrastructure as Code for Data
+DStream applies **Terraform's philosophy** to data streaming:
 
-```bash
-# Run a provider orchestration task
-go run . run counter-to-console
+- ✅ **Declarative**: Describe WHAT you want, not HOW to do it
+- ✅ **Composable**: Mix and match any input with any output
+- ✅ **Version-controlled**: Pipeline definitions live in Git
+- ✅ **Cloud-agnostic**: Runs anywhere, supports any data source/destination
+- ✅ **Language-agnostic**: Write providers in any language
 
-# With debug logging
-go run . run counter-to-console --log-level debug
+
+## How It Works
+
+DStream uses a **three-process orchestration model** inspired by Unix pipelines:
+
+```
+[Input Provider] ──stdin/stdout──> [DStream CLI] ──stdin/stdout──> [Output Provider]
 ```
 
-The CLI will:
-1. Parse the task configuration from `dstream.hcl`
-2. Launch input and output provider processes
-3. Send JSON configuration to each provider via stdin
-4. Pipe data from input provider stdout to output provider stdin
-5. Handle graceful shutdown and error recovery
+### 1. Provider Distribution (OCI)
+- **Providers are OCI artifacts** stored in container registries (GHCR, Docker Hub, etc.)
+- **Cross-platform binaries** for Linux, macOS, Windows (x64/ARM64) 
+- **Semantic versioning** with immutable, reproducible deployments
+- **Automatic caching** - providers download once, cache locally
 
-### Running Plugin Tasks (Legacy)
+### 2. Pipeline Orchestration
+- **DStream CLI** acts as the intelligent orchestrator
+- **Launches provider processes** with proper configuration
+- **Streams data** between providers using JSON over stdin/stdout
+- **Handles lifecycle** - startup, monitoring, graceful shutdown
 
-```bash
-# Run a legacy plugin task
-go run . run dotnet-counter-plugin
+### 3. Universal Protocol
+- **Language-agnostic** - providers can be written in any language 
+- **Simple I/O** - JSON over stdin/stdout pipes (like Unix philosophy)
+- **Easy testing** - test providers independently with shell commands
+- **Zero dependencies** - no shared state or runtime coordination
 
-# With debug logging for troubleshooting
-go run . run dotnet-counter-plugin --log-level debug
-```
+---
 
-### Task Management
+## Real-World Examples
 
-```bash
-# List all available tasks
-go run . list
-
-# Show task configuration (planned)
-go run . show counter-to-console
-
-# Validate configuration
-go run . validate
-```
-
-## Data Envelope Format
-
-> 📄 **Data Types:** See [`../dstream-dotnet-sdk/sdk/Katasec.DStream.Abstractions/Envelope.cs`](../dstream-dotnet-sdk/sdk/Katasec.DStream.Abstractions/Envelope.cs) for .NET envelope definition
-
-DStream uses a standard JSON envelope format for provider communication:
-
-### Counter Example
-```json
-{
-  "data": {
-    "value": 42,
-    "timestamp": "2025-09-14T17:11:21.5590040+00:00"
-  },
-  "metadata": {
-    "seq": 42,
-    "interval_ms": 1000,
-    "provider": "counter-input-provider"
+### Database CDC to Message Queue
+```hcl
+task "sql-to-kafka" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/katasec/mssql-cdc-provider:v1.2.0"
+    config {
+      connection_string = "{{ env \"DATABASE_CONNECTION_STRING\" }}"
+      tables = ["Orders", "Customers", "Inventory"]
+      polling_interval = 1000
+      batch_size = 100
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/katasec/kafka-provider:v1.1.0"
+    config {
+      bootstrap_servers = "{{ env \"KAFKA_SERVERS\" }}"
+      topic_prefix = "data_events"
+      serialization = "json"
+    }
   }
 }
 ```
 
-### CDC Example (Future)
-```json
-{
-  "data": {
-    "FirstName": "Diana",
-    "ID": "180",
-    "LastName": "Williams"
-  },
-  "metadata": {
-    "table": "Persons",
-    "operation": "Insert",
-    "lsn": "0000003600000b200003",
-    "timestamp": "2025-09-14T10:30:45Z"
+### REST API to Data Lake
+```hcl
+task "api-to-s3" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/community/rest-api-provider:v2.0.0"
+    config {
+      endpoint = "https://api.example.com/events"
+      auth_token = "{{ env \"API_TOKEN\" }}"
+      poll_interval = 30000  # Every 30 seconds
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/aws/s3-provider:v1.0.0"
+    config {
+      bucket = "my-data-lake"
+      prefix = "events/{{ date \"2006-01-02\" }}/"
+      format = "parquet"
+    }
   }
 }
 ```
 
-### Envelope Structure
+### Local Development
+```hcl
+task "local-dev" {
+  type = "providers"
+  
+  input {
+    provider_path = "../my-custom-provider/out/my-provider"  # Local binary
+    config {
+      # Development configuration
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
+    config {
+      outputFormat = "structured"
+    }
+  }
+}
+```
 
-- **`data`**: The actual payload (business data)
-- **`metadata`**: Provider-specific metadata for tracking, routing, and debugging
-- **Format**: One JSON envelope per line (JSON Lines format)
-- **Encoding**: UTF-8 text over stdin/stdout
+---
 
-## Requirements
+## How DStream Compares
 
-### For Provider Tasks
-- **Go** (latest version) for the DStream CLI
-- **Provider binaries** (any language that supports stdin/stdout)
-- **HCL configuration** file (`dstream.hcl`)
+| Category | DIY w/ Team + Tools | Enterprise (Striim, Fivetran) | OSS (Debezium / Kafka / Confluent) | DStream (OSS-first) |
+|----------|---------------------|--------------------------------|-------------------------------------|----------------------|
+| **Product License / Infra** | $4K–$8K/mo | $8K–$12K+/mo | $3K–$5K/mo (Confluent Cloud) or DIY infra | **$0 (always free)** |
+| **Engineering Team (Dev, DevOps, Data Eng)** | $17K–$33K/mo (2–3 FTEs) | $8K–$17K/mo (still 1–2 FTEs for integration) | $12K–$20K/mo (1–2 FTEs for ops burden) | **$0 required** |
+| **Complexity Overhead** | Medium–High | Low (managed, but lock-in) | High (Zookeeper, Kafka, backups) | **Low (Terraform-style config, pluggable providers)** |
+| **Total Cost (TCO)** | $21K–$40K+/mo | $16K–$29K+/mo | $15K–$25K+/mo | **Free core; support starts at $2K/mo** |
 
-### For Legacy Plugin Tasks
-- **Go** (latest version) for the DStream CLI
-- **.NET plugin binaries** with gRPC support
-- **HCL configuration** file (`dstream.hcl`)
+### Why Teams Choose DStream:
 
-### Example Providers
-- [Counter Input Provider (.NET)](https://github.com/katasec/dstream-counter-input-provider)
-- [Console Output Provider (.NET)](https://github.com/katasec/dstream-console-output-provider)
-- [DStream .NET SDK](https://github.com/katasec/dstream-dotnet-sdk)
+- ✅ **Zero vendor lock-in** - Run anywhere, own your infrastructure
+- ✅ **Terraform-familiar** - HCL config, declarative pipelines
+- ✅ **Any language** - Write providers in Python, .NET, Rust, Go, Node.js
+- ✅ **Any cloud** - AWS, Azure, GCP, or on-premises
+- ✅ **Start free** - No licensing costs, no per-connector fees
+- ✅ **Battle-tested** - Unix pipeline philosophy, process isolation
+
+---
+
+## Installation & Usage
+
+**Prerequisites:** Go (latest version)
+
+### 1. Get DStream
+```bash
+git clone https://github.com/katasec/dstream.git
+cd dstream
+go mod tidy
+```
+
+### 2. Create your pipeline
+```hcl
+# dstream.hcl
+task "my-first-pipeline" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/writeameer/dstream-counter-input-provider:v0.3.0"
+    config {
+      interval = 1000
+      maxCount = 10
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
+    config {
+      outputFormat = "simple"
+    }
+  }
+}
+```
+
+### 3. Run your pipeline
+```bash
+go run . run my-first-pipeline
+```
+
+That's it! DStream will:
+- 📥 **Pull** providers from OCI registry (cached locally)
+- ⚡ **Launch** input and output provider processes
+- 🔧 **Configure** each provider with your settings
+- 🌊 **Stream** data from input to output in real-time
+- ✨ **Handle** all process management and graceful shutdown
+
+---
+
+## Data Format
+
+DStream uses a simple JSON envelope format for all data communication:
+
+```json
+{
+  "data": {
+    "id": 123,
+    "name": "John Doe",
+    "timestamp": "2025-09-25T17:30:22.825803+00:00"
+  },
+  "metadata": {
+    "table": "users",
+    "operation": "insert",
+    "sequence": 42,
+    "source": "mssql-cdc-provider"
+  }
+}
+```
+
+- **`data`**: Your business payload (any JSON structure)
+- **`metadata`**: Provider-specific context for routing, tracking, and debugging
+- **Format**: JSON Lines (one envelope per line) over stdin/stdout
+- **Universal**: Works with any programming language
+
+---
 
 ## Provider Ecosystem
 
-> 📄 **Provider Development:** See [`../dstream-dotnet-sdk/`](../dstream-dotnet-sdk/) for .NET SDK and provider templates
-
 ### Available Providers
 
-**Input Providers:**
-- [Counter Input Provider](https://github.com/katasec/dstream-counter-input-provider) - Generate test counter data
-- SQL Server CDC Provider (planned) - SQL Server Change Data Capture
-- PostgreSQL CDC Provider (planned) - PostgreSQL replication
+**Input Providers (Data Sources):**
+- [Counter Input Provider](https://github.com/katasec/dstream-counter-input-provider) - Generate test data
+- MS SQL CDC Provider (planned) - SQL Server Change Data Capture
+- PostgreSQL CDC Provider (planned) - PostgreSQL logical replication
 - REST API Provider (planned) - Poll REST endpoints
+- Kafka Consumer Provider (planned) - Consume from Kafka topics
+- File System Provider (planned) - Watch files and directories
 
-**Output Providers:**
-- [Console Output Provider](https://github.com/katasec/dstream-console-output-provider) - Display data to console
+**Output Providers (Data Destinations):**
+- [Console Output Provider](https://github.com/katasec/dstream-console-output-provider) - Display to terminal
 - Azure Service Bus Provider (planned) - Send to Azure Service Bus
-- Kafka Provider (planned) - Send to Apache Kafka
-- Database Provider (planned) - Insert to databases
+- Kafka Producer Provider (planned) - Send to Kafka topics
+- PostgreSQL Provider (planned) - Insert to PostgreSQL
+- S3 Provider (planned) - Write to AWS S3
+- File System Provider (planned) - Write to files
 
-### Creating Providers
+### Creating Your Own Providers
 
 Providers can be written in **any language** that supports stdin/stdout:
 
-**Key Requirements:**
-1. Read JSON configuration from stdin (first line)
-2. For input providers: Write JSON envelopes to stdout
-3. For output providers: Read JSON envelopes from stdin
-4. Write logs/status to stderr
-5. Handle graceful shutdown (SIGTERM)
+#### Requirements
+1. **Read configuration** from stdin (first line, JSON)
+2. **For input providers**: Write JSON envelopes to stdout
+3. **For output providers**: Read JSON envelopes from stdin  
+4. **Write logs** to stderr (not stdout)
+5. **Handle SIGTERM** for graceful shutdown
 
-**Example Provider Languages:**
-- .NET (using [DStream .NET SDK](https://github.com/katasec/dstream-dotnet-sdk))
-- Python, Node.js, Rust, Java, etc. (direct stdin/stdout handling)
+#### Development Options
+- **[.NET SDK](https://github.com/katasec/dstream-dotnet-sdk)** - Full-featured SDK with abstractions
+- **Python, Node.js, Rust, Java, etc.** - Direct stdin/stdout handling
+- **Any language** that can process JSON and handle pipes
 
-### Provider Distribution
+#### Distribution
+- **Development**: Local binaries via `provider_path`
+- **Production**: OCI artifacts via `provider_ref` (like Docker images)
+- **Cross-platform**: Build for Linux/macOS/Windows, x64/ARM64
 
-**Current:** Local binaries via `provider_path`
-**Future:** OCI container images via `provider_ref`
+---
 
+## Advanced Features
+
+### Environment Variables
 ```hcl
-# Local development
-input {
-  provider_path = "./my-provider"
-}
-
-# Production deployment (planned)
-input {
-  provider_ref = "ghcr.io/myorg/my-provider:v1.0.0"
+config {
+  connection_string = "{{ env \"DATABASE_URL\" }}"
+  api_key = "{{ env \"API_KEY\" }}"
 }
 ```
 
-[↑ Back to Top](#table-of-contents)
+### Multiple Tasks
+```bash
+# List all tasks
+go run . list
+
+# Run specific task
+go run . run my-pipeline
+
+# Debug mode
+go run . run my-pipeline --log-level debug
+```
+
+### Local Development vs Production
+```hcl
+# Local development
+input {
+  provider_path = "../my-provider/out/provider"  # Local binary
+}
+
+# Production deployment  
+input {
+  provider_ref = "ghcr.io/myorg/my-provider:v1.0.0"  # OCI registry
+}
+```
 
 ---
 
-## Getting Started
+## Why DStream Works
 
-### Quick Example
+✅ **Simple**: JSON over stdin/stdout - every language supports this
+✅ **Reliable**: Process isolation prevents cascading failures
+✅ **Testable**: Test each provider independently with shell commands
+✅ **Scalable**: Providers are stateless, horizontally scalable processes
+✅ **Universal**: Works on any OS, any language, any cloud
 
-1. **Get the example providers**:
-   ```bash
-   # Clone and build counter input provider
-   git clone https://github.com/katasec/dstream-counter-input-provider
-   cd dstream-counter-input-provider
-   /usr/local/share/dotnet/dotnet publish -c Release
-   
-   # Clone and build console output provider  
-   git clone https://github.com/katasec/dstream-console-output-provider
-   cd dstream-console-output-provider
-   /usr/local/share/dotnet/dotnet publish -c Release
-   ```
-
-2. **Create `dstream.hcl`**:
-   ```hcl
-   task "demo" {
-     type = "providers"
-     
-     input {
-       provider_path = "../dstream-counter-input-provider/bin/Release/net9.0/osx-x64/counter-input-provider"
-       config {
-         interval = 1000
-         max_count = 5
-       }
-     }
-     
-     output {
-       provider_path = "../dstream-console-output-provider/bin/Release/net9.0/osx-x64/console-output-provider"
-       config {
-         outputFormat = "simple"
-       }
-     }
-   }
-   ```
-
-3. **Run the pipeline**:
-   ```bash
-   go run . run demo
-   ```
+---
 
 ## Contributing
 
-Contributions are welcome! This includes:
-
-- **New Providers**: Create providers in any language
-- **CLI Improvements**: Enhance the orchestration engine
-- **Documentation**: Help others understand the ecosystem
-- **Bug Reports**: Issues and suggestions
-
-Please submit pull requests or create issues for discussions.
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
+We welcome contributions:
+- **New Providers** - Build connectors for your favorite systems
+- **CLI Improvements** - Enhance the orchestration engine  
+- **Documentation** - Help others understand the ecosystem
 
 ---
 
-## Vision
+## License
 
-> **DStream is "Unix pipelines for data streaming"** - simple, composable, language-agnostic, and battle-tested. 
+MIT License - see LICENSE file for details.
 
-We believe data streaming should be as easy as `cat file.txt | grep "error" | wc -l` but for real-time data pipelines.
+---
+
+> **DStream is "Terraform for data streaming"** - declarative, composable, and battle-tested.
+> 
+> Data pipelines should be as easy as `terraform apply` but for real-time streaming.

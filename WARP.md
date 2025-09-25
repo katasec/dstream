@@ -17,6 +17,8 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 **PowerShell on macOS:**
 - .NET path: `/usr/local/share/dotnet/dotnet`
 - Use full path when running dotnet commands in PowerShell
+- ORAS binary: `/usr/local/bin/oras`
+- Use full path when pushing OCI artifacts to container registries
 
 ### Building the Solution
 ```bash

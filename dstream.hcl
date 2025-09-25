@@ -7,15 +7,15 @@ task "oci-counter-demo" {
   type = "providers"
   
   input {
-    provider_ref = "ghcr.io/katasec/dstream-counter-input-provider:v0.2.0"
+    provider_ref = "ghcr.io/writeameer/dstream-counter-input-provider:v0.3.0"
     config {
       interval = 1000    # Generate counter every 1 second
-      max_count = 5      # Stop after 5 iterations
+      maxCount = 5       # Stop after 5 iterations
     }
   }
   
   output {
-    provider_ref = "ghcr.io/katasec/dstream-console-output-provider:v0.2.0"
+    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
     config {
       outputFormat = "simple"  # Use simple output format
     }
@@ -28,15 +28,15 @@ task "local-counter-demo" {
   type = "providers"
   
   input {
-    provider_path = "../dstream-providers/counter-input-provider/bin/Release/net9.0/darwin-arm64/publish/counter-input-provider"
+    provider_path = "../dstream-counter-input-provider/out/counter-input-provider"
     config {
       interval = 2000    # Generate counter every 2 seconds
-      max_count = 3      # Stop after 3 iterations
+      maxCount = 3       # Stop after 3 iterations
     }
   }
   
   output {
-    provider_path = "../dstream-providers/console-output-provider/bin/Release/net9.0/darwin-arm64/publish/console-output-provider"
+    provider_path = "../dstream-console-output-provider/out/console-output-provider"
     config {
       outputFormat = "structured"  # Use structured output format
     }
@@ -99,10 +99,10 @@ task "test-infrastructure" {
   type = "providers"
   
   input {
-    provider_path = "../dstream-providers/counter-input-provider/bin/Release/net9.0/darwin-arm64/publish/counter-input-provider"
+    provider_path = "../dstream-counter-input-provider/out/counter-input-provider"
     config {
       interval = 2000     # Generate every 2 seconds
-      max_count = 10      # Generate 10 messages
+      maxCount = 10       # Generate 10 messages
     }
   }
   
