@@ -10,6 +10,59 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - **`DESIGN_NOTES_PHASE_2_COMPLETE.md`** - ✅ Completed infrastructure lifecycle management 
 - **`WARP_CONTEXT_RESTORE.md`** - 🚀 Quick context restoration for new Warp sessions
 
+## ✅ **CURRENT STATUS (September 2024)**
+
+**Foundation & Infrastructure Lifecycle: COMPLETE ✅**
+- **NuGet Publishing**: Automated pipeline with v0.1.1 published ✅
+- **External Provider Pattern**: Independent repos using NuGet packages ✅  
+- **Infrastructure Commands**: All CLI commands (init/destroy/plan/status/run) working ✅
+- **OCI Distribution**: Both provider_path and provider_ref working with GHCR ✅
+- **Modern Architecture**: stdin/stdout providers with command routing ✅
+
+**SQL Server CDC Provider: EXTRACTED & MODERNIZED ✅ (September 28, 2024)**
+- **Legacy Code Extraction**: Successfully extracted from dstream 0.0.16 branch ✅
+- **Modern Architecture**: Converted to stdin/stdout JSON interface ✅
+- **Simplified Configuration**: Clean JSON structure with shared settings ✅
+- **Concurrent Multi-Table**: Each table monitored independently ✅
+- **Distributed Locking**: Azure Blob Storage coordination ✅
+- **Comprehensive Documentation**: Complete README with all components ✅
+- **Repository**: `github.com/katasec/dstream-ingester-mssql` (working code) ✅
+
+**Next Priority**: Complete CDC implementation (actual SQL Server CDC queries)
+
+### 📋 **SQL Server CDC Provider Modernization Details (September 28, 2024)**
+
+**Problem Solved**: The legacy `dstream-ingester-mssql` repository contained old, non-working code using the deprecated gRPC plugin architecture. This was completely modernized to match current DStream patterns.
+
+**Extraction Process**:
+1. **Source Material**: Copied working components from dstream 0.0.16 branch
+2. **Architecture Migration**: Converted from gRPC plugins to stdin/stdout JSON interface
+3. **Configuration Simplification**: Eliminated repetitive per-table config in favor of shared settings
+4. **Component Organization**: Proper internal package structure matching .NET provider patterns
+
+**Key Components Extracted & Modernized**:
+- **`internal/cdc/`**: Checkpoint management, backoff logic, batch sizing
+- **`internal/locking/`**: Distributed locking with Azure Blob Storage
+- **`internal/config/`**: JSON configuration parsing with simplified structure
+- **`internal/db/`**: Database connection and metadata utilities
+- **`pkg/types/`**: CDC event structures and interfaces
+- **`main.go`**: Modern stdin/stdout entry point with concurrent table monitoring
+
+**Configuration Improvement**:
+```json
+// OLD (Repetitive)
+{"tables": [{"name": "dbo.orders", "db_connection_string": "...", "poll_interval": "5s", "lock_config": {...}}, ...]}
+
+// NEW (Clean)
+{"db_connection_string": "...", "poll_interval": "5s", "lock_config": {...}, "tables": ["dbo.orders", "dbo.customers"]}
+```
+
+**Repository State**:
+- **Location**: `~/progs/dstream/dstream-ingester-mssql/` (local) + `github.com/katasec/dstream-ingester-mssql` (remote)
+- **Status**: Compiles successfully, handles configuration, ready for CDC implementation
+- **Documentation**: Comprehensive README covering all components and architecture
+- **Next**: Implement actual CDC query logic using `sys.fn_cdc_get_all_changes_*`
+
 ## Development Commands
 
 ### Environment Configuration
@@ -67,10 +120,10 @@ cd ~/progs/dstream/dstream-dotnet-sdk
 /usr/local/share/dotnet/dotnet build dstream-dotnet-sdk.sln -c Release
 ```
 
-**Sample Provider Locations:**
-- `~/progs/dstream/dstream-dotnet-sdk/samples/counter-input-provider/`
-- `~/progs/dstream/dstream-dotnet-sdk/samples/console-output-provider/`
-- `~/progs/dstream/dstream-dotnet-sdk/samples/Playground/`
+**✅ VERIFIED Provider Locations (External Pattern):**
+- `~/progs/dstream/dstream-counter-input-provider/` - ✅ External repo using NuGet v0.1.1
+- `~/progs/dstream/dstream-console-output-provider/` - ✅ External repo using NuGet v0.1.1
+- `~/progs/dstream/dstream-dotnet-sdk/samples/` - Legacy examples (for SDK development only)
 
 ### Provider Makefile System
 
@@ -158,10 +211,10 @@ cd ~/progs/dstream/dstream-dotnet-sdk
 
 ### Core Components
 
-**SDK Architecture (Current - Recommended)**
-- `Katasec.DStream.Abstractions`: Core interfaces (`IInputProvider`, `IOutputProvider`, `IPluginContext`)
-- `Katasec.DStream.SDK.Core`: Base classes (`ProviderBase<TConfig>`) and utilities
-- `Katasec.DStream.SDK.PluginHost`: Main SDK package for plugin developers (gRPC bridge for HashiCorp go-plugin integration)
+**✅ SDK Architecture (PUBLISHED & VERIFIED)**
+- `Katasec.DStream.Abstractions` v0.1.1: ✅ Core interfaces (`IInputProvider`, `IOutputProvider`, `IInfrastructureProvider`)
+- `Katasec.DStream.SDK.Core` v0.1.1: ✅ Base classes (`ProviderBase<TConfig>`, `InfrastructureProviderBase<TConfig>`) 
+- `StdioProviderHost`: ✅ Command routing (`RunProviderWithCommandAsync`) for infrastructure lifecycle
 
 **Legacy Architecture (Removed)**
 - Legacy components have been removed after successful migration to new SDK
@@ -209,42 +262,46 @@ await PluginHost.Run<MyPlugin, PluginConfig>();
 - `IPluginContext`: Runtime context providing logger and services
 - `ProviderBase<TConfig>`: Base class handling configuration and context injection
 
-### Project Structure
+### ✅ **VERIFIED Project Structure (External Provider Pattern)**
 
 ```
-~/progs/dstream/                              ← Consolidated project root
-├── WARP.md                                  ← Master context file
-├── dstream/                                 ← Go CLI orchestrator
-│   ├── main.go
-│   ├── dstream.hcl                         ← Task configuration
-│   └── ...
-├── dstream-dotnet-sdk/                      ← .NET SDK
+~/progs/dstream/                              ← ✅ Consolidated project root
+├── WARP.md                                  ← ✅ Master context file  
+├── dstream/                                 ← ✅ Go CLI orchestrator
+│   ├── main.go                             ← ✅ CLI with infrastructure commands
+│   ├── dstream.hcl                         ← ✅ Task configuration
+│   └── cmd/{init,destroy,plan,status,run}.go ← ✅ All lifecycle commands
+├── dstream-dotnet-sdk/                      ← ✅ .NET SDK (publishes to NuGet)
 │   ├── sdk/
-│   │   ├── Katasec.DStream.Abstractions/   ← Core interfaces  
-│   │   └── Katasec.DStream.SDK.Core/       ← Base classes + StdioProviderHost
-│   ├── samples/                            ← Legacy plugin examples
-│   └── tests/                              ← Unit tests and test utilities
-├── dstream-counter-input-provider/          ← Counter input provider (modern)
-│   ├── Makefile                            ← Self-documenting build system
-│   ├── Program.cs
-│   ├── counter-input-provider.csproj
-│   └── bin/Release/net9.0/osx-x64/         ← Single binary output
-├── dstream-console-output-provider/         ← Console output provider (modern)
-│   ├── Makefile                            ← Self-documenting build system
-│   ├── Program.cs
-│   ├── console-output-provider.csproj
-│   └── bin/Release/net9.0/osx-x64/         ← Single binary output
-└── dstream-azureservicebus-output-provider/ ← Azure Service Bus provider
+│   │   ├── Katasec.DStream.Abstractions/   ← ✅ Published v0.1.1
+│   │   └── Katasec.DStream.SDK.Core/       ← ✅ Published v0.1.1
+│   ├── .github/workflows/publish-nuget.yml ← ✅ Automated publishing
+│   ├── VERSION.txt                         ← ✅ v0.1.1
+│   └── samples/                            ← SDK testing only
+├── dstream-counter-input-provider/          ← ✅ External repo using NuGet v0.1.1
+│   ├── Makefile                            ← ✅ Self-documenting build system
+│   ├── Program.cs                          ← ✅ StdioProviderHost.RunInputProviderAsync
+│   ├── counter-input-provider.csproj       ← ✅ <PackageReference .../>
+│   └── out/counter-input-provider           ← ✅ ~68MB single binary
+└── dstream-console-output-provider/         ← ✅ External repo using NuGet v0.1.1  
+    ├── Writer.cs + Infrastructure.cs       ← ✅ Clean separation of concerns
+    ├── console-output-provider.csproj      ← ✅ <PackageReference .../>
+    └── out/console-output-provider          ← ✅ ~68MB single binary
 ```
 
 ### Developer Experience
 
-**Plugin developers only need to reference one package:**
+**✅ External Provider Development Pattern:**
 ```xml
-<ProjectReference Include="Katasec.DStream.SDK.PluginHost" />
+<!-- External providers reference published NuGet packages -->
+<PackageReference Include="Katasec.DStream.SDK.Core" Version="0.1.1" />
 ```
 
-This follows AWS SDK patterns where developers reference the main SDK package (like `AWS.SDK.S3`) rather than internal implementation details.
+**✅ VERIFIED Working Examples:**
+- `dstream-counter-input-provider`: Uses published NuGet v0.1.1 ✅
+- `dstream-console-output-provider`: Uses published NuGet v0.1.1 ✅
+
+This enables independent provider development without requiring SDK source code.
 
 ## Architectural Decisions
 
@@ -847,13 +904,15 @@ go run . run counter-to-console
 3. **Validate data flow** - ensure counter data still flows correctly
 4. **Only proceed** if the basic communication still works
 
-**Current Working Baseline:**
-- ✅ Go CLI launches .NET plugin via gRPC
-- ✅ .NET counter generates data every 500ms  
-- ✅ Data flows back to Go CLI and is logged
-- ✅ Graceful shutdown on Ctrl+C
+**✅ VERIFIED WORKING ARCHITECTURE:**
+- ✅ Go CLI with infrastructure lifecycle commands (init/destroy/plan/status/run)
+- ✅ External providers using published NuGet packages (v0.1.1)
+- ✅ stdin/stdout communication with command routing via JSON envelopes
+- ✅ OCI distribution working with both provider_path and provider_ref
+- ✅ Infrastructure lifecycle management with `IInfrastructureProvider`
+- ✅ Complete end-to-end workflow: counter input → console output
 
-This baseline must never be broken during development.
+**Current Architecture Status**: Foundation Phase 0, 1 & 2 COMPLETE
 
 ### Integration with DStream CLI
 
