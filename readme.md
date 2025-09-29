@@ -1,369 +1,380 @@
-
 # DStream
 
-**DStream** is a robust, stateless Change Data Capture (CDC) streaming solution designed to capture changes from Microsoft SQL Server and reliably deliver them to downstream systems through Azure Service Bus or any other message queue provider. Its purpose is simple: **collect and forward** streaming data (currently CDC, but extensible to APIs, webhooks, or other streams) to any downstream system.
+**DStream is Terraform for data streaming.** Sources can be databases, APIs, files, queues—anything. Destinations can be databases, APIs, message brokers, data lakes—anywhere. 
 
----
+Declare your data pipeline in HCL, run a single command, and DStream orchestrates everything.
 
-## Design Philosophy
+## Quick Start (30 seconds)
 
-### ✅ Stateless by Design
-- No in-memory workflows.
-- No complex orchestration.
-- No recovery logic inside the service.
-- State (offsets, LSNs, messages) is stored **externally** (in SQL or the queue).
-- Crash-safe: restart, reschedule, or scale out with zero warmup or coordination.
+Here's a real-world data pipeline that streams from a counter generator to console output:
 
-### ✅ Durability & Reliability Offloaded
-- dstream **offloads durability, retries, and ordering** to external queue systems (Azure Service Bus, AWS SQS, Kafka).
-- Exactly-once guarantees at the batch level via atomic offset commits **after successful sends**.
-
-### ✅ Simplicity = Resilience
-- Reduces fault scenarios.
-- Eliminates workflow recovery issues.
-- Cuts operational overhead.
-- Easier to debug and operate.
-
-### ✅ Portability
-- Works across any cloud, queue system, source (SQL CDC, APIs, webhooks), and destination (queues, services).
-
-> The message queue is the orchestrator. The checkpoint is the resume point. The consumer defines the final behavior.
-
-
-
-## Architecture
-
-DStream operates in two main stages:
-
-1. **Ingestion Stage (Ingester)**:
-   - Monitors SQL Server tables enabled with CDC
-   - Captures changes (inserts, updates, deletes)
-   - Publishes changes to a central ingest queue
-   - Updates CDC offsets only after successful queue publish
-   - Uses distributed locking for high availability
-
-2. **Routing Stage (Router)**:
-   - Consumes messages from the ingest queue
-   - Routes messages to their destination topics
-   - Pre-creates publishers at startup for optimal performance
-   - Ensures reliable delivery to downstream systems
-
-This architecture provides several benefits:
-- Reliable capture and delivery of changes
-- Proper sequencing of messages
-- High availability through distributed locking
-- Optimized performance with connection pooling
-- Clear separation of concerns between ingestion and routing
-
-## Key Features
-
-### Ingestion
-- **CDC Monitoring**: Tracks changes (inserts, updates, deletes) on MS SQL Server tables enabled with CDC
-- **Reliable Offset Management**: Updates CDC offsets only after successful publish to ingest queue
-- **Distributed Locking**: Uses Azure Blob Storage for distributed locking in multi-instance deployments
-- **Adaptive Polling**: Features adaptive backoff for table monitoring based on change frequency
-- **Automatic Topic Creation**: Creates topics and subscriptions for each monitored table
-
-### Routing
-- **Optimized Publishing**: Pre-creates and caches publishers at startup for better performance
-- **Reliable Delivery**: Ensures messages are properly delivered to destination topics
-- **Message Preservation**: Maintains original message properties during routing
-- **Automatic Topic Management**: Creates topics and subscriptions as needed
-
-### General
-- **Flexible Configuration**: HCL-based configuration with environment variable support
-- **Structured Logging**: Built-in structured logging with configurable levels
-- **High Availability**: Supports running multiple instances for redundancy
-- **Message Metadata**: Includes rich metadata for proper message routing and tracking
-
-## Requirements
-
-- **MS SQL Server** with CDC enabled on target tables
-- **Azure Service Bus** for message streaming
-- **Azure Blob Storage** for distributed locking
-- **Go** (latest version recommended)
-
-## Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/katasec/dstream.git
-   cd dstream
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   go mod tidy
-   ```
-
-3. **Configure environment variables**:
-   ```bash
-   export DSTREAM_DB_CONNECTION_STRING="sqlserver://user:pass@localhost:1433?database=TestDB"
-   export DSTREAM_INGEST_CONNECTION_STRING="your-azure-service-bus-connection-string"
-   export DSTREAM_BLOB_CONNECTION_STRING="your-azure-blob-storage-connection-string"
-   export DSTREAM_PUBLISHER_CONNECTION_STRING="your-azure-service-bus-connection-string"
-   export DSTREAM_LOG_LEVEL="debug"  # Optional, defaults to info
-   ```
-
-## Configuration
-
-DStream uses HCL for configuration. Here's an example `dstream.hcl`:
-
+**1. Create `dstream.hcl`:**
 ```hcl
-ingester {
-    db_type = "sqlserver"
-    db_connection_string = "{{ env \"DSTREAM_DB_CONNECTION_STRING\" }}"
-
-    poll_interval_defaults {
-        poll_interval = "5s"
-        max_poll_interval = "2m"
+task "my-pipeline" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/writeameer/dstream-counter-input-provider:v0.3.0"
+    config {
+      interval = 1000    # Generate every 1 second
+      maxCount = 5       # Stop after 5 messages
     }
-
-    queue {
-        type = "servicebus"
-        name = "ingest-queue"
-        connection_string = "{{ env \"DSTREAM_INGEST_CONNECTION_STRING\" }}"
+  }
+  
+  output {
+    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
+    config {
+      outputFormat = "simple"   # Clean output format
     }
-
-    locks {
-        type = "azure_blob"
-        connection_string = "{{ env \"DSTREAM_BLOB_CONNECTION_STRING\" }}"
-        container_name = "locks"
-    }
-
-    tables = ["Persons"]
-
-    tables_overrides {
-        overrides {
-            table_name = "Persons"
-            poll_interval = "5s"
-            max_poll_interval = "10m"
-        }
-    }
-}
-
-publisher {
-    source {
-        type = "azure_service_bus"
-        connection_string = "{{ env \"DSTREAM_PUBLISHER_CONNECTION_STRING\" }}"
-    }
-
-    output {
-        type = "azure_service_bus"
-        connection_string = "{{ env \"DSTREAM_PUBLISHER_CONNECTION_STRING\" }}"
-    }
-}
-```
-
-## Usage
-
-### Starting the Ingester
-
-The ingester captures changes from SQL Server and publishes them to the ingest queue:
-
-```bash
-# Start with debug logging
-go run . ingester --log-level debug
-
-# Start with info logging (default)
-go run . ingester
-```
-
-The ingester will:
-1. Create topics for each monitored table
-2. Create a 'sub1' subscription for each topic
-3. Begin monitoring tables for changes
-4. Publish changes to the ingest queue
-5. Update CDC offsets after successful publish
-
-### Starting the Router
-
-The router consumes messages from the ingest queue and routes them to destination topics:
-
-```bash
-# Start with debug logging
-go run . router --log-level debug
-
-# Start with info logging (default)
-go run . router
-```
-
-The router will:
-1. Pre-create publishers for all configured tables
-2. Begin consuming messages from the ingest queue
-3. Route messages to their destination topics
-4. Ensure reliable delivery with proper sequencing
-
-## Message Format
-
-DStream uses a consistent message format throughout the pipeline:
-
-```json
-{
-    "data": {
-        "FirstName": "Diana",
-        "ID": "180",
-        "LastName": "Williams"
-    },
-    "metadata": {
-        "Destination": "server.database.table.events",
-        "IngestQueue": "ingest-queue",
-        "LSN": "0000003600000b200003",
-        "OperationID": 2,
-        "OperationType": "Insert",
-        "TableName": "Persons"
-    }
-}
-```
-
-### Message Fields
-
-#### Data Section
-- Contains the actual change data
-- Includes all columns from the monitored table
-- Values are preserved in their original types
-
-#### Metadata Section
-- `Destination`: Fully qualified destination topic name
-- `IngestQueue`: Name of the central ingest queue
-- `LSN`: Log Sequence Number from SQL Server CDC
-- `OperationID`: Type of change (1=delete, 2=insert, 3=update before, 4=update after)
-- `OperationType`: Human-readable operation type
-- `TableName`: Source table name
-
-### Running in Production
-
-For production deployments:
-
-```bash
-go run . server --log-level info
-```
-
-## Architecture
-
-DStream follows a modular architecture with clear separation of concerns:
-
-### Components
-
-1. **CDC Monitor**
-   - Monitors SQL Server tables for changes using CDC
-   - Uses adaptive polling with configurable intervals
-   - Tracks changes using LSN (Log Sequence Numbers)
-
-2. **Publisher Adapter**
-   - Wraps publishers with additional metadata
-   - Adds destination routing information
-   - Provides a unified interface for all publishers
-
-3. **Publishers**
-   - Pluggable components that handle message delivery
-   - Implementations available for:
-     - Azure Service Bus
-     - Azure Event Hubs
-     - Console (for debugging)
-   - Easy to add new implementations via the Publisher interface
-
-### Data Flow
-```
-[SQL Server] --> [CDC Monitor] --> [Publisher Adapter] --> [Publisher] --> [Destination]
-    |              |                    |                    |
-    |              |                    |                    |- Service Bus
-    |              |                    |                    |- Event Hubs
-    |              |                    |                    |- Console
-    |              |                    |
-    |              |                    |- Add Metadata
-    |              |                    |- Route Information
-    |              |
-    |              |- Track LSN
-    |              |- Adaptive Polling
-    |
-    |- CDC Enabled Tables
-```
-
-### Design Principles
-
-1. **Modularity**
-   - Clear separation between components
-   - Pluggable publishers for different destinations
-   - Easy to extend and maintain
-
-2. **Reliability**
-   - Distributed locking for multiple instances
-   - Message queuing for reliable delivery
-   - Graceful shutdown handling
-
-3. **Observability**
-   - Structured logging throughout
-   - Configurable log levels
-   - Clear error reporting
-
-4. **Configuration**
-   - HCL-based configuration
-   - Environment variable support
-   - Per-table configuration options
-
-### Message Format
-
-DStream publishes changes in a standardized JSON format:
-
-```json
-{
-  "data": {
-    "Field1": "Value1",
-    "Field2": "Value2"
-  },
-  "metadata": {
-    "Destination": "topic-or-queue-name",
-    "LSN": "00000034000025c80003",
-    "OperationID": 2,
-    "OperationType": "Insert|Update|Delete",
-    "TableName": "TableName"
   }
 }
 ```
 
-The metadata includes:
-- Destination for routing
-- LSN for tracking
-- Operation type (Insert=2, Update=4, Delete=1)
-- Source table name
+**2. Run your pipeline:**
+```bash
+go run . run my-pipeline
+```
 
+**3. See it work:**
+```
+[CounterInputProvider] Starting counter with interval=1000ms, max_count=5
+Message #1: {"value":1,"timestamp":"2025-09-25T17:30:22.825803+00:00"}
+Message #2: {"value":2,"timestamp":"2025-09-25T17:30:23.839113+00:00"}
+Message #3: {"value":3,"timestamp":"2025-09-25T17:30:24.843170+00:00"}
+Message #4: {"value":4,"timestamp":"2025-09-25T17:30:25.844992+00:00"}
+Message #5: {"value":5,"timestamp":"2025-09-25T17:30:26.846957+00:00"}
+✅ Task "my-pipeline" executed successfully
+```
+
+That's it! DStream automatically:
+- 🚀 **Pulled providers** from the OCI registry (GHCR)
+- 🔧 **Configured** both input and output providers
+- 📡 **Streamed data** from counter to console in real-time
+- 🛡️ **Handled** process lifecycle and graceful shutdown
+
+---
+
+## Why DStream?
+
+### The Problem: Data Integration Complexity
+- Moving data between systems requires custom code for each source/destination pair
+- No standard way to compose, test, or deploy data pipelines
+- Proprietary platforms lock you into specific languages, clouds, or vendors
+
+### The Solution: Infrastructure as Code for Data
+DStream applies **Terraform's philosophy** to data streaming:
+
+- ✅ **Declarative**: Describe WHAT you want, not HOW to do it
+- ✅ **Composable**: Mix and match any input with any output
+- ✅ **Version-controlled**: Pipeline definitions live in Git
+- ✅ **Cloud-agnostic**: Runs anywhere, supports any data source/destination
+- ✅ **Language-agnostic**: Write providers in any language
+
+
+## How It Works
+
+DStream uses a **three-process orchestration model** inspired by Unix pipelines:
+
+```
+[Input Provider] ──stdin/stdout──> [DStream CLI] ──stdin/stdout──> [Output Provider]
+```
+
+### 1. Provider Distribution (OCI)
+- **Providers are OCI artifacts** stored in container registries (GHCR, Docker Hub, etc.)
+- **Cross-platform binaries** for Linux, macOS, Windows (x64/ARM64) 
+- **Semantic versioning** with immutable, reproducible deployments
+- **Automatic caching** - providers download once, cache locally
+
+### 2. Pipeline Orchestration
+- **DStream CLI** acts as the intelligent orchestrator
+- **Launches provider processes** with proper configuration
+- **Streams data** between providers using JSON over stdin/stdout
+- **Handles lifecycle** - startup, monitoring, graceful shutdown
+
+### 3. Universal Protocol
+- **Language-agnostic** - providers can be written in any language 
+- **Simple I/O** - JSON over stdin/stdout pipes (like Unix philosophy)
+- **Easy testing** - test providers independently with shell commands
+- **Zero dependencies** - no shared state or runtime coordination
+
+---
+
+## Real-World Examples
+
+### Database CDC to Message Queue
+```hcl
+task "sql-to-kafka" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/katasec/mssql-cdc-provider:v1.2.0"
+    config {
+      connection_string = "{{ env \"DATABASE_CONNECTION_STRING\" }}"
+      tables = ["Orders", "Customers", "Inventory"]
+      polling_interval = 1000
+      batch_size = 100
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/katasec/kafka-provider:v1.1.0"
+    config {
+      bootstrap_servers = "{{ env \"KAFKA_SERVERS\" }}"
+      topic_prefix = "data_events"
+      serialization = "json"
+    }
+  }
+}
+```
+
+### REST API to Data Lake
+```hcl
+task "api-to-s3" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/community/rest-api-provider:v2.0.0"
+    config {
+      endpoint = "https://api.example.com/events"
+      auth_token = "{{ env \"API_TOKEN\" }}"
+      poll_interval = 30000  # Every 30 seconds
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/aws/s3-provider:v1.0.0"
+    config {
+      bucket = "my-data-lake"
+      prefix = "events/{{ date \"2006-01-02\" }}/"
+      format = "parquet"
+    }
+  }
+}
+```
+
+### Local Development
+```hcl
+task "local-dev" {
+  type = "providers"
+  
+  input {
+    provider_path = "../my-custom-provider/out/my-provider"  # Local binary
+    config {
+      # Development configuration
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
+    config {
+      outputFormat = "structured"
+    }
+  }
+}
+```
+
+---
+
+## How DStream Compares
+
+| Category | DIY w/ Team + Tools | Enterprise (Striim, Fivetran) | OSS (Debezium / Kafka / Confluent) | DStream (OSS-first) |
+|----------|---------------------|--------------------------------|-------------------------------------|----------------------|
+| **Product License / Infra** | $4K–$8K/mo | $8K–$12K+/mo | $3K–$5K/mo (Confluent Cloud) or DIY infra | **$0 (always free)** |
+| **Engineering Team (Dev, DevOps, Data Eng)** | $17K–$33K/mo (2–3 FTEs) | $8K–$17K/mo (still 1–2 FTEs for integration) | $12K–$20K/mo (1–2 FTEs for ops burden) | **$0 required** |
+| **Complexity Overhead** | Medium–High | Low (managed, but lock-in) | High (Zookeeper, Kafka, backups) | **Low (Terraform-style config, pluggable providers)** |
+| **Total Cost (TCO)** | $21K–$40K+/mo | $16K–$29K+/mo | $15K–$25K+/mo | **Free core; support starts at $2K/mo** |
+
+### Why Teams Choose DStream:
+
+- ✅ **Zero vendor lock-in** - Run anywhere, own your infrastructure
+- ✅ **Terraform-familiar** - HCL config, declarative pipelines
+- ✅ **Any language** - Write providers in Python, .NET, Rust, Go, Node.js
+- ✅ **Any cloud** - AWS, Azure, GCP, or on-premises
+- ✅ **Start free** - No licensing costs, no per-connector fees
+- ✅ **Battle-tested** - Unix pipeline philosophy, process isolation
+
+---
+
+## Installation & Usage
+
+**Prerequisites:** Go (latest version)
+
+### 1. Get DStream
+```bash
+git clone https://github.com/katasec/dstream.git
+cd dstream
+go mod tidy
+```
+
+### 2. Create your pipeline
+```hcl
+# dstream.hcl
+task "my-first-pipeline" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/writeameer/dstream-counter-input-provider:v0.3.0"
+    config {
+      interval = 1000
+      maxCount = 10
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
+    config {
+      outputFormat = "simple"
+    }
+  }
+}
+```
+
+### 3. Run your pipeline
+```bash
+go run . run my-first-pipeline
+```
+
+That's it! DStream will:
+- 📥 **Pull** providers from OCI registry (cached locally)
+- ⚡ **Launch** input and output provider processes
+- 🔧 **Configure** each provider with your settings
+- 🌊 **Stream** data from input to output in real-time
+- ✨ **Handle** all process management and graceful shutdown
+
+---
+
+## Data Format
+
+DStream uses a simple JSON envelope format for all data communication:
+
+```json
+{
+  "data": {
+    "id": 123,
+    "name": "John Doe",
+    "timestamp": "2025-09-25T17:30:22.825803+00:00"
+  },
+  "metadata": {
+    "table": "users",
+    "operation": "insert",
+    "sequence": 42,
+    "source": "mssql-cdc-provider"
+  }
+}
+```
+
+- **`data`**: Your business payload (any JSON structure)
+- **`metadata`**: Provider-specific context for routing, tracking, and debugging
+- **Format**: JSON Lines (one envelope per line) over stdin/stdout
+- **Universal**: Works with any programming language
+
+---
+
+## Provider Ecosystem
+
+### Available Providers
+
+**Input Providers (Data Sources):**
+- [Counter Input Provider](https://github.com/katasec/dstream-counter-input-provider) - Generate test data
+- MS SQL CDC Provider (planned) - SQL Server Change Data Capture
+- PostgreSQL CDC Provider (planned) - PostgreSQL logical replication
+- REST API Provider (planned) - Poll REST endpoints
+- Kafka Consumer Provider (planned) - Consume from Kafka topics
+- File System Provider (planned) - Watch files and directories
+
+**Output Providers (Data Destinations):**
+- [Console Output Provider](https://github.com/katasec/dstream-console-output-provider) - Display to terminal
+- Azure Service Bus Provider (planned) - Send to Azure Service Bus
+- Kafka Producer Provider (planned) - Send to Kafka topics
+- PostgreSQL Provider (planned) - Insert to PostgreSQL
+- S3 Provider (planned) - Write to AWS S3
+- File System Provider (planned) - Write to files
+
+### Creating Your Own Providers
+
+Providers can be written in **any language** that supports stdin/stdout:
+
+#### Requirements
+1. **Read configuration** from stdin (first line, JSON)
+2. **For input providers**: Write JSON envelopes to stdout
+3. **For output providers**: Read JSON envelopes from stdin  
+4. **Write logs** to stderr (not stdout)
+5. **Handle SIGTERM** for graceful shutdown
+
+#### Development Options
+- **[.NET SDK](https://github.com/katasec/dstream-dotnet-sdk)** - Full-featured SDK with abstractions
+- **Python, Node.js, Rust, Java, etc.** - Direct stdin/stdout handling
+- **Any language** that can process JSON and handle pipes
+
+#### Distribution
+- **Development**: Local binaries via `provider_path`
+- **Production**: OCI artifacts via `provider_ref` (like Docker images)
+- **Cross-platform**: Build for Linux/macOS/Windows, x64/ARM64
+
+---
+
+## Advanced Features
+
+### Environment Variables
+```hcl
+config {
+  connection_string = "{{ env \"DATABASE_URL\" }}"
+  api_key = "{{ env \"API_KEY\" }}"
+}
+```
+
+### Multiple Tasks
+```bash
+# List all tasks
+go run . list
+
+# Run specific task
+go run . run my-pipeline
+
+# Debug mode
+go run . run my-pipeline --log-level debug
+```
+
+### Local Development vs Production
+```hcl
+# Local development
+input {
+  provider_path = "../my-provider/out/provider"  # Local binary
+}
+
+# Production deployment  
+input {
+  provider_ref = "ghcr.io/myorg/my-provider:v1.0.0"  # OCI registry
+}
+```
+
+---
+
+## Why DStream Works
+
+✅ **Simple**: JSON over stdin/stdout - every language supports this
+✅ **Reliable**: Process isolation prevents cascading failures
+✅ **Testable**: Test each provider independently with shell commands
+✅ **Scalable**: Providers are stateless, horizontally scalable processes
+✅ **Universal**: Works on any OS, any language, any cloud
+
+---
 
 ## Contributing
 
-Contributions are welcome! Please submit a pull request or create an issue if you encounter bugs or have suggestions for new features.
+We welcome contributions:
+- **New Providers** - Build connectors for your favorite systems
+- **CLI Improvements** - Enhance the orchestration engine  
+- **Documentation** - Help others understand the ecosystem
+
+---
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+MIT License - see LICENSE file for details.
 
 ---
 
-## Enhanced Features Summary
-
-### ✅ Reliable Offset Management
-- **CheckpointManager** tracks LSN offsets.
-- Only commits after successful batch publishing to ensure **exactly-once delivery**.
-
-### ✅ Adaptive Polling
-- Uses **BackOffManager** for dynamic backoff based on activity and errors.
-
-### ✅ BatchSizer
-- Dynamically optimizes batch sizes considering message size limits and table characteristics.
-
-### ✅ Distributed Locking
-- Ensures single active table monitoring across instances.
-
-### ✅ HCL Configuration
-- Simple, declarative config via `dstream.hcl`.
-
-### ✅ Plugin-Ready Architecture
-- **TableMonitor** and planned **Publisher** interfaces make sources and sinks swappable.
-
-### ✅ Extensible Support
-- Ready for future sources (Postgres, APIs) and destinations (Kafka, Event Hub).
-
----
-
-## The Goal
-> Keep dstream lean, focused, and stateless—so it’s reliable, resilient, and boring (in the best way).
+> **DStream is "Terraform for data streaming"** - declarative, composable, and battle-tested.
+> 
+> Data pipelines should be as easy as `terraform apply` but for real-time streaming.

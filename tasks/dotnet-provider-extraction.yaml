@@ -1,0 +1,131 @@
+# .NET Provider Extraction Task List
+# This file contains tasks for extracting input/output providers into separate packages
+
+title: .NET Provider Extraction for DStream
+description: |
+  Tasks for extracting input/output providers from the dstream-dotnet-test project
+  into separate reusable NuGet packages, creating a modular architecture for providers
+  that can be used across multiple plugins.
+
+tasks:
+  # Phase 1: Core Provider Architecture
+  - id: update-core-interfaces
+    title: Update Core Interfaces in Katasec.DStream.Plugin
+    description: |
+      Update the core plugin interfaces to better support provider registration and discovery.
+    subtasks:
+      - Add provider registration mechanism to ProviderRegistry
+      - Create base classes for input and output providers
+      - Add provider discovery attributes
+      - Update documentation for provider interfaces
+    tags: [csharp, interfaces, architecture]
+    status: pending
+    priority: high
+    
+  - id: create-provider-base-classes
+    title: Create Provider Base Classes
+    description: |
+      Create abstract base classes for input and output providers to reduce code duplication.
+    subtasks:
+      - Create InputProviderBase abstract class
+      - Create OutputProviderBase abstract class
+      - Add common utility methods
+      - Implement default behavior for lifecycle methods
+    tags: [csharp, architecture, providers]
+    status: pending
+    priority: high
+    
+  # Phase 2: Standard Providers Package
+  - id: create-standard-providers-package
+    title: Create Katasec.DStream.Providers Package
+    description: |
+      Create a new NuGet package for standard input and output providers.
+    subtasks:
+      - Set up project structure and build configuration
+      - Create package metadata and versioning
+      - Set up CI/CD pipeline for package publishing
+      - Add documentation and examples
+    tags: [csharp, nuget, providers]
+    status: pending
+    priority: high
+    
+  - id: extract-null-input-provider
+    title: Extract NullInputProvider to Standard Package
+    description: |
+      Move the NullInputProvider from dstream-dotnet-test to the standard providers package.
+    subtasks:
+      - Copy implementation to new package
+      - Update to use provider base classes
+      - Add unit tests
+      - Add auto-registration support
+    tags: [csharp, input-provider]
+    status: pending
+    priority: high
+    
+  - id: extract-console-output-provider
+    title: Extract ConsoleOutputProvider to Standard Package
+    description: |
+      Move the ConsoleOutputProvider from dstream-dotnet-test to the standard providers package.
+    subtasks:
+      - Copy implementation to new package
+      - Update to use provider base classes
+      - Add configuration options
+      - Add unit tests
+      - Add auto-registration support
+    tags: [csharp, output-provider]
+    status: pending
+    priority: high
+    
+  # Phase 3: Integration and Testing
+  - id: update-example-project
+    title: Update dstream-dotnet-test to Use Provider Package
+    description: |
+      Update the example project to use the new provider package instead of local implementations.
+    subtasks:
+      - Remove local provider implementations
+      - Add reference to the new provider package
+      - Update registration code
+      - Test with GenericCounterPlugin
+    tags: [csharp, integration]
+    status: pending
+    priority: medium
+    
+  - id: create-provider-tests
+    title: Create Integration Tests for Providers
+    description: |
+      Create comprehensive tests for the extracted providers.
+    subtasks:
+      - Create unit tests for NullInputProvider
+      - Create unit tests for ConsoleOutputProvider
+      - Add integration tests with plugins
+      - Test provider discovery mechanism
+    tags: [csharp, testing]
+    status: pending
+    priority: medium
+    
+  # Phase 4: Documentation and Examples
+  - id: create-provider-documentation
+    title: Create Provider Documentation
+    description: |
+      Create comprehensive documentation for the provider architecture and usage.
+    subtasks:
+      - Document provider interfaces and base classes
+      - Create usage examples
+      - Add API documentation
+      - Create provider development guide
+    tags: [documentation]
+    status: pending
+    priority: medium
+    
+  - id: create-provider-samples
+    title: Create Provider Sample Projects
+    description: |
+      Create sample projects demonstrating provider usage and custom provider creation.
+    subtasks:
+      - Create basic provider usage sample
+      - Create custom provider implementation sample
+      - Add sample for provider configuration
+      - Create sample for provider discovery
+    tags: [csharp, samples]
+    status: pending
+    priority: low

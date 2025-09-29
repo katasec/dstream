@@ -1,48 +1,139 @@
-# Example of a plugin-based database connector task
-# This would be implemented in a separate plugin repository
-# task "database-connector" {
-#   plugin_ref = "ghcr.io/katasec/dstream-database-connector:v1.0.0"
-#   config {
-#     connection_string = "{{ env "DATABASE_CONNECTION_STRING" }}"
-#     tables = ["Table1", "Table2"]
-#   }
-#   
-#   input {
-#     provider = "database"
-#     config {
-#       polling_interval = "5s"
-#     }
-#   }
-#   
-#   output {
-#     provider = "messaging"
-#     config {
-#       type = "azure_service_bus"
-#       connection_string = "{{ env "MESSAGING_CONNECTION_STRING" }}"
-#     }
-#   }
-# }
+# DStream Configuration Examples
+# =============================
 
-task "dotnet-counter" {
-  type = "plugin"
-  plugin_path = "../dstream-dotnet-test/out/dstream-dotnet-test"
+# 1. OCI Container Registry Example (Production)
+# Uses semantic versioned providers distributed as OCI artifacts
+task "oci-counter-demo" {
+  type = "providers"
   
-  // Global configuration for the plugin
-  config {
-    interval = 5000  // Interval in milliseconds between counter increments
-  }
-  
-  // Input configuration
   input {
-    provider = "null"  // Null input provider as this plugin generates its own data
-    config {}
+    provider_ref = "ghcr.io/writeameer/dstream-counter-input-provider:v0.3.0"
+    config {
+      interval = 1000    # Generate counter every 1 second
+      maxCount = 5       # Stop after 5 iterations
+    }
   }
   
-  // Output configuration
   output {
-    provider = "console"  // Console output provider to display counter values
+    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
     config {
-      format = "json"  // Output format (json or text)
+      outputFormat = "simple"  # Use simple output format
     }
   }
 }
+
+# 2. Local Provider Path Example (Development)
+# Uses locally built provider binaries for development and testing
+task "local-counter-demo" {
+  type = "providers"
+  
+  input {
+    provider_path = "../dstream-counter-input-provider/out/counter-input-provider"
+    config {
+      interval = 2000    # Generate counter every 2 seconds
+      maxCount = 3       # Stop after 3 iterations
+    }
+  }
+  
+  output {
+    provider_path = "../dstream-console-output-provider/out/console-output-provider"
+    config {
+      outputFormat = "structured"  # Use structured output format
+    }
+  }
+}
+
+# 3. Legacy Plugin Example (Backward Compatibility)
+# Single .NET plugin using gRPC communication
+task "legacy-plugin-demo" {
+  type = "plugin"
+  plugin_path = "../dstream-dotnet-sdk/samples/dstream-dotnet-test/out/dstream-dotnet-test"
+   
+  config {
+    interval = 500  # Plugin-level configuration
+  }
+  
+  input {
+    provider = "null"
+    config {
+      interval = 1000
+    }
+  }
+  
+  output {
+    provider = "console"
+    config {
+      format = "json"
+    }
+  }
+}
+
+# 4. Production CDC Pipeline Example (Future)
+# Real-world SQL Server CDC to Azure Service Bus
+task "production-cdc-pipeline" {
+  type = "providers"
+  
+  input {
+    provider_ref = "ghcr.io/katasec/mssql-cdc-provider:v1.2.0"
+    config {
+      connection_string = "{{ env "DATABASE_CONNECTION_STRING" }}"
+      tables = ["Orders", "Customers", "Inventory"]
+      polling_interval = 1000
+      batch_size = 100
+    }
+  }
+  
+  output {
+    provider_ref = "ghcr.io/katasec/azure-servicebus-provider:v1.1.0"
+    config {
+      connection_string = "{{ env "MESSAGING_CONNECTION_STRING" }}"
+      queue_name = "data-events"
+      message_retention = "7d"
+    }
+  }
+}
+
+# 5. Infrastructure Lifecycle Test (Local Development)
+# Demonstrates providers with infrastructure management
+task "test-infrastructure" {
+  type = "providers"
+  
+  input {
+    provider_path = "../dstream-counter-input-provider/out/counter-input-provider"
+    config {
+      interval = 2000     # Generate every 2 seconds
+      maxCount = 10       # Generate 10 messages
+    }
+  }
+  
+  output {
+    provider_path = "../dstream-dotnet-sdk/samples/test-infrastructure-provider/bin/Release/net9.0/osx-arm64/publish/test-infrastructure-provider"
+    config {
+      testValue = "azure-service-bus"
+      resourceCount = 3   # This output provider will manage 3 infrastructure resources
+    }
+  }
+}
+
+# Usage Examples:
+#
+# Run OCI-based demo (production):
+#   ./dstream run oci-counter-demo
+#
+# Run local development demo:
+#   ./dstream run local-counter-demo
+#
+# Run legacy plugin demo:
+#   ./dstream run legacy-plugin-demo
+#
+# Show help and available commands:
+#   ./dstream --help
+#
+# Run with debug logging:
+#   ./dstream run oci-counter-demo --log-level debug
+#
+# Infrastructure lifecycle commands:
+#   ./dstream init test-infrastructure    # Initialize resources
+#   ./dstream plan test-infrastructure    # Show planned changes  
+#   ./dstream status test-infrastructure  # Show current status
+#   ./dstream destroy test-infrastructure # Destroy resources
