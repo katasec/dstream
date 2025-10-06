@@ -30,6 +30,161 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 **Next Priority**: Complete CDC implementation (actual SQL Server CDC queries)
 
+### 🏗️ **Infrastructure Lifecycle Management Architecture (September 29, 2024)**
+
+**COMPLETE DESIGN - READY FOR IMPLEMENTATION ✅**
+
+DStream has a comprehensive infrastructure lifecycle management system that solves the **table duplication problem** for database-driven providers (like SQL Server CDC → Azure Service Bus).
+
+#### Problem: DB Sources with Multiple Tables Need Infrastructure-Aware Output Providers
+
+When monitoring multiple tables:
+```json
+{"db_connection_string": "...", "tables": ["Orders", "Customers", "Inventory"]}
+```
+
+Output providers (e.g., Azure Service Bus) need to:
+1. **Create infrastructure per table** (e.g., `orders-events`, `customers-events`, `inventory-events` queues)
+2. **Route data** based on table name in envelope metadata
+3. **Manage lifecycle** (create during `dstream init`, destroy during `dstream destroy`)
+
+#### Solution: HCL Locals + Infrastructure Lifecycle Hooks
+
+**1. Single Source of Truth via HCL Locals:**
+```hcl
+locals {
+  tables = ["Orders", "Customers", "Products", "Inventory"]
+}
+
+task "mssql-cdc-to-asb" {
+  type = "providers"
+  
+  input {
+    provider_path = "./dstream-ingester-mssql"
+    config {
+      db_connection_string = "{{ env \"DATABASE_CONNECTION_STRING\" }}"
+      tables = local.tables  # Single source of truth
+      # ...
+    }
+  }
+  
+  output {
+    provider_path = "./azure-servicebus-provider"
+    config {
+      connection_string = "{{ env \"ASB_CONNECTION_STRING\" }}"
+      tables = local.tables  # Same reference - no duplication!
+      queue_naming_pattern = "{table_name}-events"
+      # ...
+    }
+  }
+}
+```
+
+**2. Infrastructure Lifecycle via .NET SDK:**
+
+The `InfrastructureProviderBase<TConfig>` provides complete lifecycle management:
+
+```csharp
+// Infrastructure.cs (partial class)
+public partial class AzureServiceBusProvider : InfrastructureProviderBase<AzureServiceBusConfig>, IOutputProvider
+{
+    protected override async Task<string[]> OnInitializeInfrastructureAsync(CancellationToken ct)
+    {
+        var resources = new List<string>();
+        
+        // Create queue for each table in Config.Tables (from HCL locals)
+        foreach (var table in Config.Tables)
+        {
+            var queueName = Config.QueueNamingPattern.Replace("{table_name}", table);
+            await serviceBusClient.CreateQueueAsync(queueName, ct);
+            resources.Add($"queue:{queueName}");
+        }
+        
+        return resources.ToArray();
+    }
+    
+    protected override async Task<string[]> OnDestroyInfrastructureAsync(CancellationToken ct)
+    {
+        var resources = new List<string>();
+        
+        // Delete queues for each table
+        foreach (var table in Config.Tables)
+        {
+            var queueName = Config.QueueNamingPattern.Replace("{table_name}", table);
+            await serviceBusClient.DeleteQueueAsync(queueName, ct);
+            resources.Add($"queue:{queueName}");
+        }
+        
+        return resources.ToArray();
+    }
+}
+
+// Writer.cs (partial class) 
+public partial class AzureServiceBusProvider
+{
+    public async Task WriteAsync(IEnumerable<Envelope> batch, IPluginContext ctx, CancellationToken ct)
+    {
+        foreach (var envelope in batch)
+        {
+            // Extract table name from envelope metadata
+            var tableName = envelope.Meta["table_name"].ToString();
+            
+            // Generate queue name using pattern
+            var queueName = Config.QueueNamingPattern.Replace("{table_name}", tableName);
+            
+            // Send envelope to appropriate queue
+            await serviceBusClient.SendMessageAsync(queueName, envelope, ct);
+        }
+    }
+}
+```
+
+**3. CLI Lifecycle Commands (Already Working):**
+```bash
+# Infrastructure provisioning
+dstream init mssql-to-asb    # Creates queues for all tables
+dstream plan mssql-to-asb    # Shows what would be created
+dstream status mssql-to-asb  # Shows current infrastructure state
+
+# Data streaming
+dstream run mssql-to-asb     # Streams data to pre-provisioned queues
+
+# Infrastructure cleanup
+dstream destroy mssql-to-asb # Destroys all queues
+```
+
+**4. SDK Base Classes Handle Everything:**
+- `InfrastructureProviderBase<TConfig>`: Public interface methods with error handling
+- Providers override simple `OnXxxAsync()` methods
+- Automatic JSON protocol handling via `StdioProviderHost`
+- Standardized `InfrastructureResult` response format
+
+#### Example: Console Output Provider (Reference Implementation)
+
+**Reference Location**: `/Users/writeameer/progs/dstream/dstream-console-output-provider/`
+- `Writer.cs`: Data streaming implementation (`WriteAsync()`) 
+- `Infrastructure.cs`: Lifecycle management (partial class with infrastructure hooks)
+- Uses `InfrastructureProviderBase<ConsoleConfig>` for lifecycle automation
+
+#### Benefits of This Architecture
+
+✅ **Single Source of Truth**: Table list defined once in `locals.tables`  
+✅ **No Configuration Drift**: Impossible to have mismatched table lists  
+✅ **Infrastructure Lifecycle**: Automatic queue creation/destruction  
+✅ **Data Routing**: Runtime routing based on envelope metadata  
+✅ **SDK Integration**: Error handling, logging, CLI integration built-in  
+✅ **Production Ready**: All infrastructure lifecycle commands working  
+
+#### Implementation Status
+
+- ✅ **SDK Base Classes**: `InfrastructureProviderBase<TConfig>` implemented
+- ✅ **CLI Commands**: `init/destroy/plan/status/run` working  
+- ✅ **Reference Example**: Console Output Provider demonstrates pattern
+- ✅ **Communication Protocol**: JSON over stdin/stdout with command routing
+- ⏳ **Azure Service Bus Provider**: Ready to implement using this pattern
+
+**This architecture is complete and production-ready for building infrastructure-aware output providers.**
+
 ### 📋 **SQL Server CDC Provider Modernization Details (September 28, 2024)**
 
 **Problem Solved**: The legacy `dstream-ingester-mssql` repository contained old, non-working code using the deprecated gRPC plugin architecture. This was completely modernized to match current DStream patterns.

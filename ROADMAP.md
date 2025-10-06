@@ -10,6 +10,8 @@
 3. **External Provider Pattern** - Independent provider repos consuming published NuGet packages ✅
 4. **OCI Distribution** - Both provider_path and provider_ref working with GHCR ✅
 
+**IMMEDIATE NEXT PRIORITY**: HCL `locals` support to solve table duplication problem
+
 **Next Priority**: Production provider development with real-world SQL CDC and Azure Service Bus providers.
 
 ## 🎯 Foundation Challenge
@@ -227,6 +229,97 @@ dstream destroy mssql-to-asb   # ✅ Clean up infrastructure for task
 - [x] ✅ **COMPLETED** - `StdioProviderHost.RunProviderWithCommandAsync()` with command routing
 - [x] ✅ **COMPLETED** - `CommandEnvelope<TConfig>` for deserialization 
 - [x] ✅ **COMPLETED** - `InfrastructureProviderBase<TConfig>` with lifecycle methods
+
+### PHASE 2.1: HCL Locals Support ⭐ **IMMEDIATE PRIORITY**
+
+## 🎯 **Implementation Plan Based on Analysis (October 2024)**
+
+### **The Core Problem**
+- **Table Duplication Risk**: Current configs require repeating table lists in both input and output blocks, creating configuration drift risk
+- **Solution**: Add HCL `locals` support for single source of truth
+
+### **Current Architecture Understanding (From Phase 1 ✅)**
+1. **HCL Parsing Location**: `pkg/config/config_funcs.go` - `DecodeHCL[T any]()` function
+2. **Template Processing Order**: `RenderHCLTemplate()` → `DecodeHCL()` (templates process FIRST)
+3. **Extension Point**: `DecodeHCL()` uses `gohcl.DecodeBody(f.Body, nil, &c)` with **nil context** - this is where we add locals
+4. **Config Struct**: `RootHCL` in `pkg/config/config.go` needs `Locals` field
+
+## 📋 **Implementation Steps (Phase 2-9)**
+
+### **Phase 2: Simplified HCL Grammar Design**
+- [ ] Add `Locals map[string]interface{} `hcl:"locals,optional"`` to `RootHCL` struct
+- [ ] Ensure it's optional (existing configs continue working)
+- [ ] Support only simple key-value pairs (no nested blocks)
+
+### **Phase 3: Integration with Template System**
+- [ ] Maintain current order: Templates → Locals → Config validation
+- [ ] Ensure `{{ env "VAR" }}` works inside locals values
+- [ ] Replace `DecodeHCL()` to use `hcl.EvalContext` with locals evaluation instead of `nil`
+
+### **Phase 4: Simplified Error Handling**
+- [ ] Clear errors for undefined `local.undefined_var`
+- [ ] Error for multiple `locals` blocks
+- [ ] Error for nested blocks in locals (only key=value allowed)
+- [ ] Show available locals in error messages
+
+### **Phase 5: Grammar Linting & Validation**
+- [ ] Add `dstream lint` CLI command for config validation
+- [ ] Validate locals syntax before execution
+
+### **Phase 6-7: Testing & Core Implementation**
+- [ ] Test backward compatibility (no locals block)
+- [ ] Test simple locals: `local.env_name = "production"`
+- [ ] Test arrays: `local.tables = ["Orders", "Customers"]`
+- [ ] Test templates in locals: `local.db = "{{ env \"DB_NAME\" }}"`
+- [ ] **Core**: Replace `gohcl.DecodeBody(f.Body, nil, &c)` with locals-aware version
+
+### **Phase 8-9: Edge Cases & Documentation**
+- [ ] Handle empty `locals {}` block
+- [ ] Prevent conflicts with reserved keywords
+- [ ] Create user documentation and migration guide
+
+## 🔑 **Key Technical Changes Needed**
+
+1. **Struct Addition**: Add `Locals` field to `RootHCL`
+2. **Core Function**: Replace `DecodeHCL()` to use `hcl.EvalContext` instead of `nil`
+3. **Locals Evaluation**: Parse locals block first, then use values in `hcl.EvalContext`
+4. **CLI Command**: Add `dstream lint` command
+5. **Error Handling**: Better error messages for locals-related issues
+
+## ✅ **Success Criteria**
+
+This should work after implementation:
+```hcl
+locals {
+  tables = ["Orders", "Customers", "Products"]
+  database_connection = "{{ env \"DATABASE_CONNECTION_STRING\" }}"
+}
+
+task "mssql-to-console" {
+  input {
+    provider_path = "../dstream-ingester-mssql/dstream-ingester-mssql"
+    config {
+      db_connection_string = local.database_connection
+      tables = local.tables  # Single source of truth
+    }
+  }
+  output {
+    provider_path = "../dstream-console-output-provider/out/console-output-provider"
+    config {
+      tables = local.tables  # Same reference - no duplication!
+    }
+  }
+}
+```
+
+## ⏱️ **Time Estimate**: 2-3 hours total
+
+**Benefits Once Complete**:
+✅ **Table duplication problem completely solved**  
+✅ **Infrastructure lifecycle management ready for production**  
+✅ **MSSQL CDC provider can be integrated immediately with locals**
+
+---
 
 ### Phase 3: SQL Server CDC Input Provider Extraction ⭐ **HIGH VALUE**
 
