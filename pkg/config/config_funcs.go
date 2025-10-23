@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // LogConfigLoaded is a simple helper to log when configuration is loaded successfully
@@ -68,13 +69,65 @@ func DecodeHCL[T any](configHCL string, filePath string) T {
 	pos := hcl.Pos{Line: 0, Column: 0, Byte: 0}
 	f, _ := hclsyntax.ParseConfig(src, filePath, pos)
 
-	// Decode HCL into a config struct and return to caller
+	// Create evaluation context for locals support
+	ctx := &hcl.EvalContext{
+		Variables: make(map[string]cty.Value),
+	}
+
+	// First pass: Decode to extract locals
+	var temp RootHCL
+	decodeDiags := gohcl.DecodeBody(f.Body, ctx, &temp)
+
+	// If locals exist, populate the context with local variables
+	if temp.Locals != nil && temp.Locals.Vars != nil {
+		for name, value := range temp.Locals.Vars {
+			ctx.Variables[name] = interfaceToCtyValue(value)
+		}
+	}
+
+	// Second pass: Decode again with locals in the context
 	var c T
-	decodeDiags := gohcl.DecodeBody(f.Body, nil, &c)
+	decodeDiags = gohcl.DecodeBody(f.Body, ctx, &c)
 	if decodeDiags.HasErrors() {
 		log.Error("Error decoding HCL", "error", decodeDiags.Error())
 		os.Exit(1)
 	}
 
 	return c
+}
+
+// interfaceToCtyValue converts Go interface{} to cty.Value for HCL variable resolution
+func interfaceToCtyValue(val interface{}) cty.Value {
+	switch v := val.(type) {
+	case string:
+		return cty.StringVal(v)
+	case int, int32, int64:
+		switch num := v.(type) {
+		case int:
+			return cty.NumberIntVal(int64(num))
+		case int32:
+			return cty.NumberIntVal(int64(num))
+		case int64:
+			return cty.NumberIntVal(num)
+		}
+	case float64:
+		return cty.NumberFloatVal(v)
+	case bool:
+		return cty.BoolVal(v)
+	case []interface{}:
+		vals := make([]cty.Value, len(v))
+		for i, elem := range v {
+			vals[i] = interfaceToCtyValue(elem)
+		}
+		return cty.ListVal(vals)
+	case map[string]interface{}:
+		vals := make(map[string]cty.Value)
+		for k, elem := range v {
+			vals[k] = interfaceToCtyValue(elem)
+		}
+		return cty.MapVal(vals)
+	default:
+		return cty.StringVal(fmt.Sprintf("%v", val))
+	}
+	return cty.StringVal(fmt.Sprintf("%v", val))
 }

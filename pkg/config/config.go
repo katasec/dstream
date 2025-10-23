@@ -3,8 +3,13 @@ package config
 import "os"
 
 type RootHCL struct {
+	Locals  *LocalsBlock   `hcl:"locals,block"`
 	DStream *DStreamConfig `hcl:"dstream,block"`
 	Tasks   []TaskBlock    `hcl:"task,block"`
+}
+
+type LocalsBlock struct {
+	Vars map[string]interface{} `hcl:",remain"`
 }
 
 type DStreamConfig struct {
