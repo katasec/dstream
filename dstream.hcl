@@ -16,9 +16,9 @@ task "mssql-test" {
   }
   
   output {
-    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
+    provider_ref = "ghcr.io/katasec/dstream-log-output-provider:v0.1.0"
     config {
-      outputFormat = "simple"
+      logLevel = "info"
     }
   }
 }
