@@ -31,7 +31,7 @@ task "oci-counter-demo" {
   type = "providers"
   
   input {
-    provider_ref = "ghcr.io/writeameer/dstream-counter-input-provider:v0.3.0"
+    provider_ref = "ghcr.io/katasec/dstream-counter-input-provider:v0.2.0"
     config {
       interval = 1000    # Generate counter every 1 second
       maxCount = 5       # Stop after 5 iterations
@@ -39,7 +39,7 @@ task "oci-counter-demo" {
   }
   
   output {
-    provider_ref = "ghcr.io/writeameer/dstream-console-output-provider:v0.3.0"
+    provider_ref = "ghcr.io/katasec/dstream-console-output-provider:v0.2.0"
     config {
       outputFormat = "simple"  # Use simple output format
     }

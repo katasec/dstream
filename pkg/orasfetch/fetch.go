@@ -33,7 +33,8 @@ func PullBinary(ref string) (string, error) {
 		return "", fmt.Errorf("failed to create plugin cache dir: %w", err)
 	}
 
-	cmd := exec.Command("/usr/local/bin/oras", "pull", ref, "--output", cachePath, "--registry-config", filepath.Join(os.Getenv("HOME"), ".oras-config"))
+	//cmd := exec.Command("/usr/local/bin/oras", "pull", ref, "--output", cachePath, "--registry-config", filepath.Join(os.Getenv("HOME"), ".oras-config"))
+	cmd := exec.Command("oras", "pull", ref, "--output", cachePath, "--registry-config", filepath.Join(os.Getenv("HOME"), ".oras-config"))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
