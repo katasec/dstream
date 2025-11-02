@@ -21,7 +21,11 @@ func PullBinary(ref string) (string, error) {
 		binaryName += ".exe"
 	}
 
-	cachePath := filepath.Join(os.Getenv("HOME"), ".dstream", "plugins", name, version, platform)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	cachePath := filepath.Join(homeDir, ".dstream", "plugins", name, version, platform)
 	pluginPath := filepath.Join(cachePath, binaryName)
 
 	if _, err := os.Stat(pluginPath); err == nil {
@@ -33,8 +37,7 @@ func PullBinary(ref string) (string, error) {
 		return "", fmt.Errorf("failed to create plugin cache dir: %w", err)
 	}
 
-	//cmd := exec.Command("/usr/local/bin/oras", "pull", ref, "--output", cachePath, "--registry-config", filepath.Join(os.Getenv("HOME"), ".oras-config"))
-	cmd := exec.Command("oras", "pull", ref, "--output", cachePath, "--registry-config", filepath.Join(os.Getenv("HOME"), ".oras-config"))
+	cmd := exec.Command("oras", "pull", ref, "--output", cachePath, "--registry-config", filepath.Join(homeDir, ".oras-config"))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
