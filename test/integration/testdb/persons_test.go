@@ -54,7 +54,7 @@ func TestSimplePersonChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get database name: %v", err)
 	}
-	if strings.ToLower(dbName) != strings.ToLower("TestDB") {
+	if !strings.EqualFold(dbName, "TestDB") {
 		t.Fatalf("Expected to be connected to TestDB, but connected to %s", dbName)
 	}
 	t.Logf("Connected to database: %s", dbName)
