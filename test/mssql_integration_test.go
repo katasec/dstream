@@ -8,6 +8,7 @@ import (
 
 	"github.com/katasec/testcontainers-go-presets/mssql"
 	_ "github.com/microsoft/go-mssqldb"
+	"github.com/testcontainers/testcontainers-go"
 )
 
 func Test_MSSQL_Setup(t *testing.T) {
@@ -24,20 +25,11 @@ func Test_MSSQL_Setup(t *testing.T) {
 	t.Cleanup(func() { c.Terminate(context.Background()) })
 
 	// Connect to master
-	connStr, err := mssql.ConnectionString(ctx, c, pw, "master")
+	db, err := connectToDB(t, ctx, c, pw, "master")
 	if err != nil {
-		t.Fatalf("failed to build master conn string: %v", err)
-	}
-
-	db, err := sql.Open("sqlserver", connStr)
-	if err != nil {
-		t.Fatalf("failed to open sql connection: %v", err)
+		t.Fatalf("failed to connect to master DB: %v", err)
 	}
 	defer db.Close()
-
-	if err := db.PingContext(ctx); err != nil {
-		t.Fatalf("failed to ping sql server: %v", err)
-	}
 
 	// Create TestDB
 	if _, err := db.ExecContext(ctx, `CREATE DATABASE TestDB`); err != nil {
@@ -57,7 +49,26 @@ func Test_MSSQL_Setup(t *testing.T) {
 	defer testdb.Close()
 
 	// Create Cars
-	if _, err := testdb.ExecContext(ctx, `
+	createTables(t, testdb, ctx)
+	t.Log("Successfully created TestDB, Cars, and Persons tables!")
+}
+
+func connectToDB(t *testing.T, ctx context.Context, c testcontainers.Container, pw string, dbName string) (db *sql.DB, err error) {
+	connStr, err := mssql.ConnectionString(ctx, c, pw, "master")
+	if err != nil {
+		t.Fatalf("failed to build master conn string: %v", err)
+	}
+	db, err = sql.Open("sqlserver", connStr)
+	if err != nil {
+		t.Fatalf("failed to open sql connection: %v", err)
+	}
+	return db, err
+}
+
+func createTables(t *testing.T, db *sql.DB, ctx context.Context) {
+
+	// Create Cars
+	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE Cars (
 			CarID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
 			BrandName NVARCHAR(50) NOT NULL,
@@ -67,7 +78,7 @@ func Test_MSSQL_Setup(t *testing.T) {
 	}
 
 	// Create Persons
-	if _, err := testdb.ExecContext(ctx, `
+	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE Persons (
 			ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
 			FirstName VARCHAR(100),
@@ -75,6 +86,4 @@ func Test_MSSQL_Setup(t *testing.T) {
 		)`); err != nil {
 		t.Fatalf("failed to create Persons table: %v", err)
 	}
-
-	t.Log("Successfully created TestDB, Cars, and Persons tables!")
 }

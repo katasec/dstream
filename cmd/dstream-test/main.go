@@ -63,7 +63,7 @@ func usage() {
 func startMSSQL(ctx context.Context) error {
 	fmt.Println("Starting MSSQL...")
 
-	const pw = "P@ssw0rd123"
+	const pw = "Passw0rd123"
 
 	// Start the container using your preset
 	c, err := mssql.Run(ctx, mssql.WithPassword(pw))

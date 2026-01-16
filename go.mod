@@ -8,7 +8,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.3
 	github.com/hashicorp/hcl/v2 v2.23.0
-	github.com/katasec/testcontainers-go-presets v0.1.1
+	github.com/katasec/testcontainers-go-presets v0.1.3
 	github.com/microsoft/go-mssqldb v1.9.5
 	github.com/spf13/cobra v1.9.1
 	github.com/zclconf/go-cty v1.16.2
