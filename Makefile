@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help mssql-up mssql-up-force mssql-down mssql-test
+.PHONY: help mssql-up mssql-up-force mssql-down mssql-test mssql-insert-person
 .DEFAULT_GOAL := help
 
 help: ## Show available make targets
@@ -23,3 +23,7 @@ mssql-down: ## Stop and remove local SQL Server container
 
 mssql-test: ## Run the configured DStream MSSQL task
 	go run . run mssql-test --log-level debug
+
+
+mssql-insert-person: ## Insert one random row into dbo.Persons
+	./scripts/mssql-insert-person.sh

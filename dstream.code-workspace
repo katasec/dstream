@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../dstream-ingester-mssql"
+		},
+		{
+			"path": "../dstream-log-output-provider"
+		}
+	],
+	"settings": {
+		"terminal.integrated.fontFamily": "CaskaydiaCove Nerd Font Mono",
+		"terminal.integrated.fontSize": 16
+	}
+}
