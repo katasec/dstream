@@ -8,6 +8,15 @@
 		},
 		{
 			"path": "../dstream-log-output-provider"
+		},
+		{
+			"path": "../dstream-console-output-provider"
+		},
+		{
+			"path": "../dstream-dotnet-sdk"
+		},
+		{
+			"path": "../dstream-counter-input-provider"
 		}
 	],
 	"settings": {
