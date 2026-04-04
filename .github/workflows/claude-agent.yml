@@ -45,12 +45,25 @@ jobs:
             ${{ github.event.inputs.issue_body }}
             --- END TASK ---
 
-            Instructions:
-            1. Read the task carefully and implement what is described.
-            2. Follow the existing code style and conventions in this repo.
-            3. Keep changes focused — only what the task requires.
+            ## Conventions (read before writing any code)
+
+            This repo has an AGENTS.md at the root — read it before making any changes.
+            Key principles:
+            - Progressive disclosure: code reveals *what* at the top, *how* one level deeper.
+            - Outline-first: intent and flow clear in the first 15–20 lines of any function/file.
+            - Small composable functions (~20–40 lines max). Top-down method ordering.
+            - Handle errors explicitly. No silent swallowing. Zero warnings policy.
+            - Only change what the task requires. No refactoring surrounding code.
+            - Test every change. Build must pass before opening a PR.
+
+            ## Instructions
+            1. Read AGENTS.md in this repo for full conventions and design doc links.
+            2. Read the task carefully. Understand it fully before writing any code.
+            3. Implement only what is described in the task. No extras.
+            4. Ensure the build passes and tests pass before finishing.
 
       - name: Commit changes and open PR
+        id: open_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
@@ -62,6 +75,7 @@ jobs:
 
           if git diff --quiet && git diff --cached --quiet; then
             echo "No changes made by Claude — skipping PR."
+            echo "pr_url=" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -71,9 +85,9 @@ jobs:
           git commit -m "fix: ${ISSUE_TITLE} (closes katasec/dstream-mission-control#${ISSUE_NUMBER})"
           git push origin "$BRANCH"
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --title "${ISSUE_TITLE}" \
-            --body "$(cat <<EOF
+            --body "$(cat <<PRBODY
           ## Summary
 
           Automated implementation from Claude Code agent.
@@ -81,7 +95,43 @@ jobs:
           Source issue: ${ISSUE_URL}
 
           Closes katasec/dstream-mission-control#${ISSUE_NUMBER}
-          EOF
+          PRBODY
           )" \
             --base main \
-            --head "$BRANCH"
+            --head "$BRANCH")
+
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "PR opened: $PR_URL"
+
+      - name: Post PR link to source issue
+        if: steps.open_pr.outputs.pr_url != ''
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+          ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
+          PR_URL: ${{ steps.open_pr.outputs.pr_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo katasec/dstream-mission-control \
+            --body "✅ Claude agent completed work in \`$REPO\`. PR opened: $PR_URL"
+
+      - name: Job summary
+        if: always()
+        env:
+          PR_URL: ${{ steps.open_pr.outputs.pr_url }}
+          ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
+          ISSUE_TITLE: ${{ github.event.inputs.issue_title }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "## Claude Agent Run" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Repo | \`$REPO\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Issue | [#$ISSUE_NUMBER — $ISSUE_TITLE](https://github.com/katasec/dstream-mission-control/issues/$ISSUE_NUMBER) |" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$PR_URL" ]; then
+            echo "| PR | $PR_URL |" >> $GITHUB_STEP_SUMMARY
+            echo "| Status | ✅ PR opened |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Status | ⚠️ No changes — PR skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
