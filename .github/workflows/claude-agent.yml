@@ -48,6 +48,40 @@ jobs:
             Instructions:
             1. Read the task carefully and implement what is described.
             2. Follow the existing code style and conventions in this repo.
-            3. When opening a PR, the PR body MUST include the line:
-               Closes katasec/dstream-mission-control#${{ github.event.inputs.issue_number }}
-            4. Keep the PR focused — only changes required by the task.
+            3. Keep changes focused — only what the task requires.
+
+      - name: Commit changes and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
+          ISSUE_TITLE: ${{ github.event.inputs.issue_title }}
+          ISSUE_URL: ${{ github.event.inputs.issue_url }}
+        run: |
+          git config user.name "claude-agent"
+          git config user.email "claude-agent@users.noreply.github.com"
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes made by Claude — skipping PR."
+            exit 0
+          fi
+
+          BRANCH="claude/issue-${ISSUE_NUMBER}"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "fix: ${ISSUE_TITLE} (closes katasec/dstream-mission-control#${ISSUE_NUMBER})"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "${ISSUE_TITLE}" \
+            --body "$(cat <<EOF
+          ## Summary
+
+          Automated implementation from Claude Code agent.
+
+          Source issue: ${ISSUE_URL}
+
+          Closes katasec/dstream-mission-control#${ISSUE_NUMBER}
+          EOF
+          )" \
+            --base main \
+            --head "$BRANCH"
