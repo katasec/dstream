@@ -1,0 +1,53 @@
+name: Claude Code Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Mission-control issue number
+        required: true
+      issue_title:
+        description: Issue title
+        required: true
+      issue_body:
+        description: Issue body (full task)
+        required: true
+      issue_url:
+        description: Issue URL
+        required: true
+
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Claude Code Agent
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          mode: agent
+          direct_prompt: |
+            You are working on the katasec/dstream repository.
+
+            You have been assigned the following task from katasec/dstream-mission-control:
+
+            Issue #${{ github.event.inputs.issue_number }}: ${{ github.event.inputs.issue_title }}
+            Source: ${{ github.event.inputs.issue_url }}
+
+            --- TASK ---
+            ${{ github.event.inputs.issue_body }}
+            --- END TASK ---
+
+            Instructions:
+            1. Read the task carefully and implement what is described.
+            2. Follow the existing code style and conventions in this repo.
+            3. When opening a PR, the PR body MUST include the line:
+               Closes katasec/dstream-mission-control#${{ github.event.inputs.issue_number }}
+            4. Keep the PR focused — only changes required by the task.
