@@ -28,13 +28,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Claude Code Agent
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@1eddb334cfa79fdb21ecbe2180ca1a016e8e7d47 # v1.0.88
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           mode: agent
           direct_prompt: |
-            You are working on the katasec/dstream repository.
+            You are working on the ${{ github.repository }} repository.
 
             You have been assigned the following task from katasec/dstream-mission-control:
 
