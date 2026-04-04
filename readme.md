@@ -4,6 +4,10 @@
 
 Declare your data pipeline in HCL, run a single command, and DStream orchestrates everything.
 
+## Protocol Overview
+
+DStream uses a three-process stdin/stdout pipeline: input provider → DStream CLI → output provider. Providers communicate via a JSON command envelope: `{ "command": "<lifecycle>", "config": { ... } }`. Input providers write JSON change events to stdout; output providers read them from stdin. Providers can be resolved by local path or OCI reference.
+
 ## Quick Start (30 seconds)
 
 Here's a real-world data pipeline that streams from a counter generator to console output:
