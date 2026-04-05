@@ -16,8 +16,17 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
       - name: Build
         run: go build ./...
 
       - name: Run unit tests
-        run: go test ./pkg/executor/... -v -timeout 120s
+        run: gotestsum --format github-actions --junitfile test-results.xml -- ./pkg/executor/... -timeout 120s
+
+      - name: Test summary
+        if: always()
+        uses: test-summary/action@v2
+        with:
+          paths: test-results.xml
