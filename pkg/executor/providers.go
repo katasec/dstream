@@ -2,11 +2,14 @@ package executor
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -54,7 +57,10 @@ func executeOutputProviderOnly(task *config.TaskBlock, command string) error {
 	if err != nil {
 		return fmt.Errorf("create output provider stdout pipe: %w", err)
 	}
-	outputCmd.Stderr = os.Stderr
+
+	// Capture stderr during startup for diagnostics, then tee to os.Stderr
+	var stderrBuf bytes.Buffer
+	outputCmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
 
 	outputConfig, err := createCommandEnvelope(func() (string, error) {
 		return task.OutputConfigAsJSON()
@@ -76,7 +82,7 @@ func executeOutputProviderOnly(task *config.TaskBlock, command string) error {
 
 	// Wait for ready handshake, then forward remaining stdout to os.Stdout
 	scanner := bufio.NewScanner(outputStdout)
-	firstLine, err := waitForReady(scanner, "output-provider", 30*time.Second)
+	firstLine, err := waitForReady(scanner, "output-provider", 30*time.Second, outputCmd, &stderrBuf)
 	if err != nil {
 		outputCmd.Process.Kill()
 		return err
@@ -134,7 +140,9 @@ func executeFullPipeline(task *config.TaskBlock) error {
 	if err != nil {
 		return fmt.Errorf("create input provider stdin pipe: %w", err)
 	}
-	inputCmd.Stderr = os.Stderr // Forward stderr for logging
+	// Capture stderr during startup for diagnostics, then tee to os.Stderr
+	var inputStderrBuf bytes.Buffer
+	inputCmd.Stderr = io.MultiWriter(os.Stderr, &inputStderrBuf)
 
 	// Launch output provider process
 	outputCmd := exec.CommandContext(ctx, outputPath)
@@ -146,7 +154,9 @@ func executeFullPipeline(task *config.TaskBlock) error {
 	if err != nil {
 		return fmt.Errorf("create output provider stdout pipe: %w", err)
 	}
-	outputCmd.Stderr = os.Stderr // Forward stderr for logging
+	// Capture stderr during startup for diagnostics, then tee to os.Stderr
+	var outputStderrBuf bytes.Buffer
+	outputCmd.Stderr = io.MultiWriter(os.Stderr, &outputStderrBuf)
 
 	// Create command envelopes
 	inputConfig, err := createCommandEnvelope(func() (string, error) {
@@ -193,13 +203,13 @@ func executeFullPipeline(task *config.TaskBlock) error {
 	inputScanner := bufio.NewScanner(inputStdout)
 	outputScanner := bufio.NewScanner(outputStdout)
 
-	inputFirstLine, err := waitForReady(inputScanner, "input-provider", 30*time.Second)
+	inputFirstLine, err := waitForReady(inputScanner, "input-provider", 30*time.Second, inputCmd, &inputStderrBuf)
 	if err != nil {
 		gracefulShutdown(inputCmd, outputCmd)
 		return err
 	}
 
-	outputFirstLine, err := waitForReady(outputScanner, "output-provider", 30*time.Second)
+	outputFirstLine, err := waitForReady(outputScanner, "output-provider", 30*time.Second, outputCmd, &outputStderrBuf)
 	if err != nil {
 		gracefulShutdown(inputCmd, outputCmd)
 		return err
@@ -296,42 +306,96 @@ type providerReadySignal struct {
 }
 
 // waitForReady reads the first line from a provider's stdout and checks for the ready handshake.
-// Returns nil if the provider is ready, or an error with the provider's message if it failed.
+// It races three signals (like Terraform's go-plugin):
+//  1. First stdout line received (handshake or legacy data)
+//  2. Process exit (crash, missing dependency, panic)
+//  3. Timeout
+//
+// Returns nil if the provider is ready, or an error with context including stderr output.
 // If the provider doesn't emit a handshake (legacy), the first line is returned as non-handshake
 // so the caller can decide what to do with it.
-func waitForReady(scanner *bufio.Scanner, providerName string, timeout time.Duration) (firstNonHandshakeLine string, err error) {
-	readyCh := make(chan string, 1)
+func waitForReady(scanner *bufio.Scanner, providerName string, timeout time.Duration, cmd *exec.Cmd, stderrBuf *bytes.Buffer) (firstNonHandshakeLine string, err error) {
+	type readResult struct {
+		line string
+		ok   bool
+	}
+
+	readyCh := make(chan readResult, 1)
 	go func() {
 		if scanner.Scan() {
-			readyCh <- scanner.Text()
+			readyCh <- readResult{line: scanner.Text(), ok: true}
 		} else {
-			readyCh <- ""
+			readyCh <- readResult{ok: false}
 		}
 	}()
 
+	// Monitor process exit in background by polling Process state.
+	// We do NOT call cmd.Wait() here — that must remain for the caller to use.
+	// Instead, we use os.Process.Signal(0) which returns an error if the process has exited.
+	exitCh := make(chan struct{}, 1)
+	stopPolling := make(chan struct{})
+	go func() {
+		// Poll every 50ms — fast enough to detect crashes near-instantly vs the 30s timeout
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopPolling:
+				return
+			case <-ticker.C:
+				if cmd.ProcessState != nil {
+					exitCh <- struct{}{}
+					return
+				}
+				// Signal(0) doesn't send a signal; it checks if the process is alive
+				if cmd.Process != nil && cmd.Process.Signal(syscall.Signal(0)) != nil {
+					exitCh <- struct{}{}
+					return
+				}
+			}
+		}
+	}()
+	defer close(stopPolling)
+
+	stderrContext := func() string {
+		if stderrBuf == nil || stderrBuf.Len() == 0 {
+			return ""
+		}
+		// Trim and limit stderr to last 10 lines for readability
+		lines := strings.Split(strings.TrimSpace(stderrBuf.String()), "\n")
+		if len(lines) > 10 {
+			lines = lines[len(lines)-10:]
+		}
+		return "\nProvider stderr:\n  " + strings.Join(lines, "\n  ")
+	}
+
 	select {
-	case line := <-readyCh:
-		if line == "" {
-			return "", fmt.Errorf("%s: provider closed stdout without ready signal", providerName)
+	case result := <-readyCh:
+		if !result.ok {
+			return "", fmt.Errorf("%s: provider closed stdout without ready signal%s", providerName, stderrContext())
 		}
 
 		var signal providerReadySignal
-		if err := json.Unmarshal([]byte(line), &signal); err == nil && signal.Status != "" {
+		if err := json.Unmarshal([]byte(result.line), &signal); err == nil && signal.Status != "" {
 			switch signal.Status {
 			case "ready":
 				log.Info("Provider ready", "provider", providerName)
 				return "", nil
 			case "error":
-				return "", fmt.Errorf("%s startup failed: %s", providerName, signal.Message)
+				return "", fmt.Errorf("%s startup failed: %s%s", providerName, signal.Message, stderrContext())
 			}
 		}
 
 		// Not a handshake line — legacy provider, return the line for the caller to handle
 		log.Debug("Provider did not emit handshake, treating as legacy", "provider", providerName)
-		return line, nil
+		return result.line, nil
+
+	case <-exitCh:
+		// Provider process exited before sending handshake — immediate detection
+		return "", fmt.Errorf("%s: provider crashed during startup%s", providerName, stderrContext())
 
 	case <-time.After(timeout):
-		return "", fmt.Errorf("%s: timed out waiting for ready signal", providerName)
+		return "", fmt.Errorf("%s: timed out waiting for ready signal after %s%s", providerName, timeout, stderrContext())
 	}
 }
 
