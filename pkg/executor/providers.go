@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"sync"
 	"syscall"
@@ -281,17 +282,21 @@ func executeFullPipeline(task *config.TaskBlock) error {
 		close(errChan)
 	}()
 
-	// Handle graceful shutdown with timeout
+	// Listen for OS signals (SIGINT/SIGTERM) for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	// Wait for: provider error, clean completion, or OS signal
 	select {
 	case err := <-errChan:
 		if err != nil {
 			log.Error("Provider execution error", "error", err.Error())
-			// Graceful shutdown of both processes
 			gracefulShutdown(inputCmd, outputCmd)
 			return err
 		}
-	case <-time.After(5 * time.Minute): // Timeout for long-running tasks
-		log.Info("Task timeout reached, shutting down providers")
+	case sig := <-sigChan:
+		log.Info("Received signal, shutting down providers", "signal", sig.String())
 		gracefulShutdown(inputCmd, outputCmd)
 	}
 
