@@ -94,6 +94,27 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 
+	case "bench_input":
+		// Benchmark helper: emit handshake then N copies of a message to stdout
+		msg := os.Getenv("BENCH_MSG")
+		count := 1000
+		fmt.Sscanf(os.Getenv("BENCH_COUNT"), "%d", &count)
+		fmt.Fprintln(os.Stdout, `{"status":"ready"}`)
+		for i := 0; i < count; i++ {
+			fmt.Fprintln(os.Stdout, msg)
+		}
+		os.Exit(0)
+
+	case "bench_output":
+		// Benchmark helper: emit handshake then consume stdin until EOF
+		fmt.Fprintln(os.Stdout, `{"status":"ready"}`)
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Buffer(make([]byte, 64*1024), 64*1024)
+		for scanner.Scan() {
+			// consume — simulates output provider receiving data
+		}
+		os.Exit(0)
+
 	default:
 		// Normal test runner
 		os.Exit(m.Run())
