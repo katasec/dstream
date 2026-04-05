@@ -50,7 +50,10 @@ func executeOutputProviderOnly(task *config.TaskBlock, command string) error {
 	if err != nil {
 		return fmt.Errorf("create output provider stdin pipe: %w", err)
 	}
-	outputCmd.Stdout = os.Stdout
+	outputStdout, err := outputCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("create output provider stdout pipe: %w", err)
+	}
 	outputCmd.Stderr = os.Stderr
 
 	outputConfig, err := createCommandEnvelope(func() (string, error) {
@@ -70,6 +73,24 @@ func executeOutputProviderOnly(task *config.TaskBlock, command string) error {
 		return fmt.Errorf("send output config: %w", err)
 	}
 	outputStdin.Close()
+
+	// Wait for ready handshake, then forward remaining stdout to os.Stdout
+	scanner := bufio.NewScanner(outputStdout)
+	firstLine, err := waitForReady(scanner, "output-provider", 30*time.Second)
+	if err != nil {
+		outputCmd.Process.Kill()
+		return err
+	}
+	// If legacy provider returned a non-handshake line, print it
+	if firstLine != "" {
+		fmt.Fprintln(os.Stdout, firstLine)
+	}
+	// Forward remaining stdout
+	go func() {
+		for scanner.Scan() {
+			fmt.Fprintln(os.Stdout, scanner.Text())
+		}
+	}()
 
 	if err := outputCmd.Wait(); err != nil {
 		return fmt.Errorf("output provider failed: %w", err)
@@ -121,7 +142,10 @@ func executeFullPipeline(task *config.TaskBlock) error {
 	if err != nil {
 		return fmt.Errorf("create output provider stdin pipe: %w", err)
 	}
-	outputCmd.Stdout = os.Stdout // Forward stdout for final output
+	outputStdout, err := outputCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("create output provider stdout pipe: %w", err)
+	}
 	outputCmd.Stderr = os.Stderr // Forward stderr for logging
 
 	// Create command envelopes
@@ -165,6 +189,32 @@ func executeFullPipeline(task *config.TaskBlock) error {
 		return fmt.Errorf("send output config: %w", err)
 	}
 
+	// Wait for ready handshake from both providers before starting data relay
+	inputScanner := bufio.NewScanner(inputStdout)
+	outputScanner := bufio.NewScanner(outputStdout)
+
+	inputFirstLine, err := waitForReady(inputScanner, "input-provider", 30*time.Second)
+	if err != nil {
+		gracefulShutdown(inputCmd, outputCmd)
+		return err
+	}
+
+	outputFirstLine, err := waitForReady(outputScanner, "output-provider", 30*time.Second)
+	if err != nil {
+		gracefulShutdown(inputCmd, outputCmd)
+		return err
+	}
+
+	// Forward output provider's non-handshake stdout to os.Stdout
+	go func() {
+		if outputFirstLine != "" {
+			fmt.Fprintln(os.Stdout, outputFirstLine)
+		}
+		for outputScanner.Scan() {
+			fmt.Fprintln(os.Stdout, outputScanner.Text())
+		}
+	}()
+
 	// Setup graceful shutdown handling
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
@@ -175,9 +225,16 @@ func executeFullPipeline(task *config.TaskBlock) error {
 		defer wg.Done()
 		defer outputStdin.Close()
 
-		scanner := bufio.NewScanner(inputStdout)
-		for scanner.Scan() {
-			line := scanner.Text()
+		// If input provider sent a non-handshake first line (legacy), forward it as data
+		if inputFirstLine != "" {
+			if _, err := fmt.Fprintln(outputStdin, inputFirstLine); err != nil {
+				errChan <- fmt.Errorf("write to output provider: %w", err)
+				return
+			}
+		}
+
+		for inputScanner.Scan() {
+			line := inputScanner.Text()
 			log.Debug("Data flowing", "data", line)
 
 			// Forward data to output provider
@@ -187,7 +244,7 @@ func executeFullPipeline(task *config.TaskBlock) error {
 			}
 		}
 
-		if err := scanner.Err(); err != nil {
+		if err := inputScanner.Err(); err != nil {
 			errChan <- fmt.Errorf("read from input provider: %w", err)
 		}
 	}()
@@ -230,6 +287,52 @@ func executeFullPipeline(task *config.TaskBlock) error {
 
 	log.Info("Provider orchestration completed successfully", "task", task.Name)
 	return nil
+}
+
+// providerReadySignal represents the handshake response from a provider after config validation
+type providerReadySignal struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+}
+
+// waitForReady reads the first line from a provider's stdout and checks for the ready handshake.
+// Returns nil if the provider is ready, or an error with the provider's message if it failed.
+// If the provider doesn't emit a handshake (legacy), the first line is returned as non-handshake
+// so the caller can decide what to do with it.
+func waitForReady(scanner *bufio.Scanner, providerName string, timeout time.Duration) (firstNonHandshakeLine string, err error) {
+	readyCh := make(chan string, 1)
+	go func() {
+		if scanner.Scan() {
+			readyCh <- scanner.Text()
+		} else {
+			readyCh <- ""
+		}
+	}()
+
+	select {
+	case line := <-readyCh:
+		if line == "" {
+			return "", fmt.Errorf("%s: provider closed stdout without ready signal", providerName)
+		}
+
+		var signal providerReadySignal
+		if err := json.Unmarshal([]byte(line), &signal); err == nil && signal.Status != "" {
+			switch signal.Status {
+			case "ready":
+				log.Info("Provider ready", "provider", providerName)
+				return "", nil
+			case "error":
+				return "", fmt.Errorf("%s startup failed: %s", providerName, signal.Message)
+			}
+		}
+
+		// Not a handshake line — legacy provider, return the line for the caller to handle
+		log.Debug("Provider did not emit handshake, treating as legacy", "provider", providerName)
+		return line, nil
+
+	case <-time.After(timeout):
+		return "", fmt.Errorf("%s: timed out waiting for ready signal", providerName)
+	}
 }
 
 // resolveProviderPath determines the binary path for a provider

@@ -52,7 +52,7 @@ task "mssql-to-asb" {
   type = "providers"
 
   input {
-    provider_path = "../dstream-ingester-mssql/dstream-ingester-mssql"
+    provider_ref = "ghcr.io/katasec/dstream-ingester-mssql:v0.0.57"
     config {
       db_connection_string = "server=localhost,1433;user id=sa;password=Passw0rd123;database=TestDB;encrypt=disable"
       poll_interval   = "5s"
@@ -65,7 +65,7 @@ task "mssql-to-asb" {
   }
 
   output {
-    provider_path = "../dstream-out-asb/bin/Debug/net9.0/osx-arm64/dstream-out-asb"
+    provider_ref = "ghcr.io/katasec/dstream-out-asb:v0.2.0"
     config {
       connectionString = "{{ env `ASB_CONNECTION_STRING` }}"
       resourceGroup    = "rg-dstream-dev"
