@@ -46,5 +46,38 @@ task "oci-counter-demo" {
   }
 }
 
+# MSSQL CDC -> Azure Service Bus (Capability Reset target)
+# This is the original production capability rebuilt on the new architecture
+task "mssql-to-asb" {
+  type = "providers"
+
+  input {
+    provider_path = "../dstream-ingester-mssql/dstream-ingester-mssql"
+    config {
+      db_connection_string = "server=localhost,1433;user id=sa;password=Passw0rd123;database=TestDB;encrypt=disable"
+      poll_interval   = "5s"
+      max_poll_interval = "30s"
+      tables = ["Persons", "Cars"]
+      lock_config = {
+        type = "none"
+      }
+    }
+  }
+
+  output {
+    provider_path = "../dstream-out-asb/bin/Debug/net9.0/osx-arm64/dstream-out-asb"
+    config {
+      connectionString = "{{ env `ASB_CONNECTION_STRING` }}"
+      resourceGroup    = "rg-dstream-dev"
+      namespace        = "sb-dstream-dev"
+      sourceHost       = "localhost"
+      sourceDatabase   = "TestDB"
+      tables           = ["dbo.Cars", "dbo.Persons"]
+    }
+  }
+}
+
 # Usage:
 #   go run . run mssql-test --log-level debug
+#   ASB_CONNECTION_STRING="Endpoint=sb://..." go run . init mssql-to-asb
+#   ASB_CONNECTION_STRING="Endpoint=sb://..." go run . run mssql-to-asb

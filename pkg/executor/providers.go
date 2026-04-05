@@ -24,6 +24,63 @@ func ExecuteProviderTask(task *config.TaskBlock) error {
 
 // ExecuteProviderTaskWithCommand orchestrates providers with a specific lifecycle command
 func ExecuteProviderTaskWithCommand(task *config.TaskBlock, command string) error {
+	// For lifecycle commands (init/plan/status/destroy), only the output provider runs.
+	// Input providers are data readers — they don't manage infrastructure.
+	if command != "run" {
+		return executeOutputProviderOnly(task, command)
+	}
+
+	return executeFullPipeline(task)
+}
+
+// executeOutputProviderOnly runs only the output provider for lifecycle commands
+func executeOutputProviderOnly(task *config.TaskBlock, command string) error {
+	log.Info("Running lifecycle command on output provider only", "task", task.Name, "command", command)
+
+	outputPath, err := resolveProviderPath(task.Output)
+	if err != nil {
+		return fmt.Errorf("resolve output provider: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	outputCmd := exec.CommandContext(ctx, outputPath)
+	outputStdin, err := outputCmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("create output provider stdin pipe: %w", err)
+	}
+	outputCmd.Stdout = os.Stdout
+	outputCmd.Stderr = os.Stderr
+
+	outputConfig, err := createCommandEnvelope(func() (string, error) {
+		return task.OutputConfigAsJSON()
+	}, command)
+	if err != nil {
+		return fmt.Errorf("create output command envelope: %w", err)
+	}
+
+	log.Debug("Sending lifecycle command to output provider", "command", command, "config", outputConfig)
+
+	if err := outputCmd.Start(); err != nil {
+		return fmt.Errorf("start output provider: %w", err)
+	}
+
+	if _, err := fmt.Fprintln(outputStdin, outputConfig); err != nil {
+		return fmt.Errorf("send output config: %w", err)
+	}
+	outputStdin.Close()
+
+	if err := outputCmd.Wait(); err != nil {
+		return fmt.Errorf("output provider failed: %w", err)
+	}
+
+	log.Info("Lifecycle command completed successfully", "task", task.Name, "command", command)
+	return nil
+}
+
+// executeFullPipeline runs both input and output providers with data relay
+func executeFullPipeline(task *config.TaskBlock) error {
 	log.Info("Starting provider orchestration", "task", task.Name)
 
 	// Resolve input provider binary path
@@ -32,13 +89,13 @@ func ExecuteProviderTaskWithCommand(task *config.TaskBlock, command string) erro
 		return fmt.Errorf("resolve input provider: %w", err)
 	}
 
-	// Resolve output provider binary path  
+	// Resolve output provider binary path
 	outputPath, err := resolveProviderPath(task.Output)
 	if err != nil {
 		return fmt.Errorf("resolve output provider: %w", err)
 	}
 
-	log.Info("Provider paths resolved", 
+	log.Info("Provider paths resolved",
 		"input_provider", inputPath,
 		"output_provider", outputPath)
 
@@ -67,43 +124,24 @@ func ExecuteProviderTaskWithCommand(task *config.TaskBlock, command string) erro
 	outputCmd.Stdout = os.Stdout // Forward stdout for final output
 	outputCmd.Stderr = os.Stderr // Forward stderr for logging
 
-	// Input providers only get "run" command (they're just readers)
-	// Output providers get the actual lifecycle command (init/destroy/plan/status/run)
-	inputCommand := "run"
-	if command != "run" {
-		log.Debug("Input providers only support 'run' command - using 'run' for input provider", 
-			"original_command", command, 
-			"input_command", inputCommand)
-	}
-
 	// Create command envelopes
 	inputConfig, err := createCommandEnvelope(func() (string, error) {
 		return task.InputConfigAsJSON()
-	}, inputCommand)
+	}, "run")
 	if err != nil {
 		return fmt.Errorf("create input command envelope: %w", err)
 	}
 
 	outputConfig, err := createCommandEnvelope(func() (string, error) {
 		return task.OutputConfigAsJSON()
-	}, command)
+	}, "run")
 	if err != nil {
 		return fmt.Errorf("create output command envelope: %w", err)
 	}
 
-	if command == "run" {
-		log.Debug("Sending 'run' command to both providers for data processing",
-			"input_config", inputConfig,
-			"output_config", outputConfig)
-	} else {
-		log.Info("Sending lifecycle command to output provider only",
-			"lifecycle_command", command,
-			"input_command", "run",
-			"output_command", command)
-		log.Debug("Provider configurations",
-			"input_config", inputConfig,
-			"output_config", outputConfig)
-	}
+	log.Debug("Sending 'run' command to both providers for data processing",
+		"input_config", inputConfig,
+		"output_config", outputConfig)
 
 	// Start input provider
 	if err := inputCmd.Start(); err != nil {
@@ -141,7 +179,7 @@ func ExecuteProviderTaskWithCommand(task *config.TaskBlock, command string) erro
 		for scanner.Scan() {
 			line := scanner.Text()
 			log.Debug("Data flowing", "data", line)
-			
+
 			// Forward data to output provider
 			if _, err := fmt.Fprintln(outputStdin, line); err != nil {
 				errChan <- fmt.Errorf("write to output provider: %w", err)
